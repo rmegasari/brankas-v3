@@ -1,318 +1,456 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+
+import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Progress } from "@/components/ui/progress"
-import { Plus, Edit2, Trash2, CreditCard, Calendar, DollarSign, Loader2, ShieldCheck } from "lucide-react"
-import type { Debt } from "@/types"
-import { supabase } from "@/lib/supabase"
+import { Switch } from "@/components/ui/switch"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CreditCard, Wallet, PiggyBank, Plus, Settings, TrendingUp, TrendingDown, Eye } from "lucide-react"
+import Link from "next/link"
+import { accounts as initialAccounts, transactions } from "@/lib/data"
+import type { Account } from "@/types"
 
-export default function DebtsPage() {
-  // State untuk data, loading, dan error
-  const [debts, setDebts] = useState<Debt[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // State untuk form
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
-  const [formData, setFormData] = useState({
+export default function PlatformsPage() {
+  const [accounts, setAccounts] = useState<Account[]>(initialAccounts)
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+  const [newAccount, setNewAccount] = useState({
     name: "",
-    totalAmount: "",
-    remainingAmount: "",
-    interestRate: "",
-    minimumPayment: "",
-    dueDate: "",
-    description: "",
+    type: "bank" as "bank" | "ewallet",
+    balance: "",
+    isSavings: false,
+    color: "bg-blue-500",
   })
 
-  // Fungsi untuk mengambil data dari Supabase
-  const fetchDebts = async () => {
-    try {
-      setLoading(true)
-      const { data, error } = await supabase
-        .from("debts")
-        .select("*")
-        .order("name", { ascending: true })
-
-      if (error) {
-        throw error
-      }
-      
-      const transformedData = data.map((debt) => ({
-        id: debt.id,
-        name: debt.name,
-        totalAmount: debt.total,
-        remainingAmount: debt.remaining,
-        interestRate: debt.interest,
-        minimumPayment: debt.minimumPayment,
-        dueDate: debt.dueDate,
-        description: debt.description,
-        isActive: debt.is_active,
-        createdAt: debt.created_at,
-      }))
-      
-      setDebts(transformedData || [])
-
-    } catch (err) {
-      console.error("Error fetching debts:", err)
-      setError("Gagal memuat data hutang. Silakan coba lagi.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Jalankan fetchDebts saat komponen pertama kali dimuat
-  useEffect(() => {
-    fetchDebts()
-  }, [])
-
-  // Fungsi untuk mengirim data (Tambah/Update) ke Supabase
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const debtData = {
-      name: formData.name,
-      total: Number.parseFloat(formData.totalAmount),
-      remaining: Number.parseFloat(formData.remainingAmount),
-      interest: formData.interestRate ? Number.parseFloat(formData.interestRate) : null,
-      minimumPayment: formData.minimumPayment ? Number.parseFloat(formData.minimumPayment) : null,
-      dueDate: formData.dueDate || null,
-      description: formData.description || null,
-    }
-
-    let error
-    if (editingDebt) {
-      const { error: updateError } = await supabase
-        .from("debts")
-        .update(debtData)
-        .eq("id", editingDebt.id)
-      error = updateError
-    } else {
-      const { error: insertError } = await supabase.from("debts").insert([debtData])
-      error = insertError
-    }
-
-    if (error) {
-      console.error("Error saving debt:", error)
-      alert("Gagal menyimpan data.")
-    } else {
-      await fetchDebts()
-      resetForm()
-    }
-  }
-
-  // Fungsi untuk menghapus data dari Supabase
-  const handleDelete = async (id: string) => {
-    if (window.confirm("Apakah Anda yakin ingin menghapus hutang ini?")) {
-      const { error } = await supabase.from("debts").delete().eq("id", id)
-      if (error) {
-        console.error("Error deleting debt:", error)
-        alert("Gagal menghapus data.")
-      } else {
-        setDebts(debts.filter((debt) => debt.id !== id))
-      }
-    }
-  }
-
-  const resetForm = () => {
-    setFormData({
-      name: "",
-      totalAmount: "",
-      remainingAmount: "",
-      interestRate: "",
-      minimumPayment: "",
-      dueDate: "",
-      description: "",
-    })
-    setShowAddForm(false)
-    setEditingDebt(null)
-  }
-
-  const handleEdit = (debt: Debt) => {
-    setEditingDebt(debt)
-    setFormData({
-      name: debt.name,
-      totalAmount: debt.totalAmount.toString(),
-      remainingAmount: debt.remainingAmount.toString(),
-      interestRate: debt.interestRate?.toString() || "",
-      minimumPayment: debt.minimumPayment?.toString() || "",
-      dueDate: debt.dueDate || "",
-      description: debt.description || "",
-    })
-    setShowAddForm(true)
-  }
-
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount)
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+      minimumFractionDigits: 0,
+    }).format(amount)
   }
 
-  const formatCompactCurrency = (amount: number) => {
-    if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M`
-    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K`
-    return amount.toString()
+  const getAccountStats = (accountId: string) => {
+    const accountTransactions = transactions.filter((t) => t.accountId === accountId || t.toAccountId === accountId)
+    const income = accountTransactions
+      .filter(
+        (t) =>
+          (t.type === "income" && t.accountId === accountId) || (t.type === "transfer" && t.toAccountId === accountId),
+      )
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+    const expense = accountTransactions
+      .filter(
+        (t) =>
+          (t.type === "expense" && t.accountId === accountId) || (t.type === "transfer" && t.accountId === accountId),
+      )
+      .reduce((sum, t) => sum + Math.abs(t.amount), 0)
+
+    return { income, expense, transactionCount: accountTransactions.length }
   }
+
+  const handleAddAccount = (e: React.FormEvent) => {
+    e.preventDefault()
+    const account: Account = {
+      id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: newAccount.name,
+      type: newAccount.type,
+      balance: Number.parseFloat(newAccount.balance) || 0,
+      isSavings: newAccount.isSavings,
+      color: newAccount.color,
+    }
+    setAccounts([...accounts, account])
+    setIsAddModalOpen(false)
+    setNewAccount({
+      name: "",
+      type: "bank",
+      balance: "",
+      isSavings: false,
+      color: "bg-blue-500",
+    })
+  }
+
+  const handleEditAccount = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedAccount) return
+
+    const updatedAccounts = accounts.map((account) => (account.id === selectedAccount.id ? selectedAccount : account))
+    setAccounts(updatedAccounts)
+    setIsEditModalOpen(false)
+    setSelectedAccount(null)
+  }
+
+  const colorOptions = [
+    { value: "bg-blue-500", label: "Biru", color: "bg-blue-500" },
+    { value: "bg-green-500", label: "Hijau", color: "bg-green-500" },
+    { value: "bg-yellow-500", label: "Kuning", color: "bg-yellow-500" },
+    { value: "bg-red-500", label: "Merah", color: "bg-red-500" },
+    { value: "bg-purple-500", label: "Ungu", color: "bg-purple-500" },
+    { value: "bg-orange-500", label: "Oranye", color: "bg-orange-500" },
+    { value: "bg-pink-500", label: "Pink", color: "bg-pink-500" },
+    { value: "bg-indigo-500", label: "Indigo", color: "bg-indigo-500" },
+  ]
+
+  const bankAccounts = accounts.filter((account) => account.type === "bank")
+  const ewalletAccounts = accounts.filter((account) => account.type === "ewallet")
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="mx-auto max-w-6xl">
-        {/* --- HEADER --- */}
+      <div className="mx-auto max-w-7xl">
+        {/* Header */}
         <div className="mb-8 flex items-center justify-between">
-          <h1 className="text-4xl font-bold text-foreground font-manrope">Manajemen Hutang</h1>
-          {!showAddForm && !loading && !error && (
-            <Button onClick={() => setShowAddForm(true)} className="neobrutalism-button bg-primary text-primary-foreground">
-              <Plus className="h-4 w-4 mr-2" />
-              Tambah Hutang
-            </Button>
-          )}
+          <div className="flex items-center gap-4">
+            <h1 className="text-4xl font-bold text-foreground font-manrope">Platform Brankas</h1>
+          </div>
+
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <Button className="neobrutalism-button bg-primary text-primary-foreground">
+                <Plus className="h-4 w-4 mr-2" />
+                Tambah Akun
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="neobrutalism-card max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-bold font-manrope">Tambah Akun Baru</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleAddAccount} className="space-y-4">
+                <div>
+                  <Label htmlFor="name" className="text-sm font-semibold">
+                    Nama Akun
+                  </Label>
+                  <Input
+                    id="name"
+                    className="neobrutalism-input mt-1"
+                    value={newAccount.name}
+                    onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
+                    placeholder="Contoh: BCA, GoPay"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="type" className="text-sm font-semibold">
+                    Tipe Akun
+                  </Label>
+                  <Select
+                    value={newAccount.type}
+                    onValueChange={(value: "bank" | "ewallet") => setNewAccount({ ...newAccount, type: value })}
+                  >
+                    <SelectTrigger className="neobrutalism-input mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bank">Rekening Bank</SelectItem>
+                      <SelectItem value="ewallet">E-Wallet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="balance" className="text-sm font-semibold">
+                    Saldo Awal
+                  </Label>
+                  <Input
+                    id="balance"
+                    type="number"
+                    className="neobrutalism-input mt-1"
+                    value={newAccount.balance}
+                    onChange={(e) => setNewAccount({ ...newAccount, balance: e.target.value })}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="color" className="text-sm font-semibold">
+                    Warna
+                  </Label>
+                  <Select
+                    value={newAccount.color}
+                    onValueChange={(value) => setNewAccount({ ...newAccount, color: value })}
+                  >
+                    <SelectTrigger className="neobrutalism-input mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {colorOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full ${option.color}`} />
+                            {option.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="savings"
+                    checked={newAccount.isSavings}
+                    onCheckedChange={(checked) => setNewAccount({ ...newAccount, isSavings: checked })}
+                  />
+                  <Label htmlFor="savings" className="text-sm font-semibold">
+                    Tandai sebagai akun tabungan
+                  </Label>
+                </div>
+
+                <Button type="submit" className="neobrutalism-button w-full bg-primary text-primary-foreground">
+                  Tambah Akun
+                </Button>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
-        
-        {/* --- FORM TAMBAH/EDIT --- */}
-        {showAddForm && (
-          <Card className="neobrutalism-card mb-8">
-            <CardHeader>
-              <CardTitle className="text-xl font-bold font-manrope">
-                {editingDebt ? "Edit Hutang" : "Tambah Hutang Baru"}
-              </CardTitle>
+
+        {/* Summary Cards */}
+        <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-4">
+          <Card className="neobrutalism-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold">Total Akun</CardTitle>
+              <Wallet className="h-5 w-5 text-primary" />
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Nama Hutang *</Label>
-                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="neobrutalism-input" placeholder="Contoh: KTA Bank Mandiri" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="totalAmount">Total Hutang *</Label>
-                    <Input id="totalAmount" type="number" value={formData.totalAmount} onChange={(e) => setFormData({ ...formData, totalAmount: e.target.value })} className="neobrutalism-input" placeholder="50000000" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="remainingAmount">Sisa Hutang *</Label>
-                    <Input id="remainingAmount" type="number" value={formData.remainingAmount} onChange={(e) => setFormData({ ...formData, remainingAmount: e.target.value })} className="neobrutalism-input" placeholder="35000000" required />
-                  </div>
-                  <div>
-                    <Label htmlFor="interestRate">Bunga (% per tahun)</Label>
-                    <Input id="interestRate" type="number" step="0.1" value={formData.interestRate} onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })} className="neobrutalism-input" placeholder="12" />
-                  </div>
-                  <div>
-                    <Label htmlFor="minimumPayment">Pembayaran Minimum</Label>
-                    <Input id="minimumPayment" type="number" value={formData.minimumPayment} onChange={(e) => setFormData({ ...formData, minimumPayment: e.target.value })} className="neobrutalism-input" placeholder="2500000" />
-                  </div>
-                  <div>
-                    <Label htmlFor="dueDate">Jatuh Tempo</Label>
-                    <Input id="dueDate" type="date" value={formData.dueDate} onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })} className="neobrutalism-input" />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="description">Deskripsi</Label>
-                  <Textarea id="description" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="neobrutalism-input" placeholder="Deskripsi hutang..." rows={3} />
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" className="neobrutalism-button bg-primary text-primary-foreground">
-                    {editingDebt ? "Update" : "Tambah"} Hutang
-                  </Button>
-                  <Button type="button" variant="outline" onClick={resetForm} className="neobrutalism-button bg-transparent">
-                    Batal
-                  </Button>
-                </div>
-              </form>
+              <div className="text-2xl font-bold">{accounts.length}</div>
             </CardContent>
           </Card>
-        )}
 
-        {/* --- KONTEN UTAMA (LOADING / ERROR / DATA) --- */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center text-center py-20">
-            <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-            <p className="text-lg text-muted-foreground">Memuat data hutang...</p>
-          </div>
-        ) : error ? (
-          <div className="text-center py-20 text-destructive">{error}</div>
-        ) : debts.length === 0 && !showAddForm ? (
           <Card className="neobrutalism-card">
-            <CardContent className="text-center py-12">
-              <ShieldCheck className="h-12 w-12 mx-auto text-secondary mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Selamat, Anda Bebas Hutang!</h3>
-              <p className="text-muted-foreground mb-4">Tidak ada data hutang yang tercatat saat ini.</p>
-              <Button
-                onClick={() => setShowAddForm(true)}
-                className="neobrutalism-button bg-primary text-primary-foreground"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Catat Hutang Baru
-              </Button>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold">Rekening Bank</CardTitle>
+              <CreditCard className="h-5 w-5 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{bankAccounts.length}</div>
             </CardContent>
           </Card>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {debts.map((debt) => {
-              const progress = debt.totalAmount > 0 ? ((debt.totalAmount - debt.remainingAmount) / debt.totalAmount) * 100 : 0
-              const isOverdue = debt.dueDate && new Date(debt.dueDate) < new Date()
 
-              return (
-                <Card key={debt.id} className="neobrutalism-card">
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg font-bold font-manrope">{debt.name}</CardTitle>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(debt)} className="neobrutalism-button p-2">
-                          <Edit2 className="h-4 w-4" />
+          <Card className="neobrutalism-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold">E-Wallet</CardTitle>
+              <Wallet className="h-5 w-5 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{ewalletAccounts.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card className="neobrutalism-card">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-semibold">Akun Tabungan</CardTitle>
+              <PiggyBank className="h-5 w-5 text-chart-1" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{accounts.filter((acc) => acc.isSavings).length}</div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Bank Accounts Section */}
+        {bankAccounts.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold font-manrope mb-4 flex items-center gap-2">
+              <CreditCard className="h-6 w-6" />
+              Rekening Bank
+            </h2>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {bankAccounts.map((account) => {
+                const stats = getAccountStats(account.id)
+                return (
+                  <Card key={account.id} className="neobrutalism-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-lg font-bold flex items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full ${account.color}`} />
+                        {account.name}
+                      </CardTitle>
+                      <div className="flex items-center gap-1">
+                        {account.isSavings && <PiggyBank className="h-4 w-4 text-chart-1" />}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedAccount(account)
+                            setIsEditModalOpen(true)
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Settings className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleDelete(debt.id)} className="neobrutalism-button p-2 text-destructive">
-                          <Trash2 className="h-4 w-4" />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <div className="text-2xl font-bold">{formatCurrency(account.balance)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Saldo saat ini
+                          {account.isSavings && " • Tabungan"}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3 text-secondary" />
+                          <span className="text-secondary font-semibold">{formatCurrency(stats.income)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <TrendingDown className="h-3 w-3 text-destructive" />
+                          <span className="text-destructive font-semibold">{formatCurrency(stats.expense)}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">{stats.transactionCount} transaksi bulan ini</div>
+
+                      <Link href={`/platforms/${account.id}`}>
+                        <Button className="neobrutalism-button w-full bg-transparent border-2 border-black hover:bg-muted">
+                          <Eye className="h-4 w-4 mr-2" />
+                          Lihat Detail
                         </Button>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <div className="text-muted-foreground">Total Hutang</div>
-                        <div className="font-bold">{formatCompactCurrency(debt.totalAmount)}</div>
-                      </div>
-                      <div>
-                        <div className="text-muted-foreground">Sisa Hutang</div>
-                        <div className="font-bold text-destructive">{formatCompactCurrency(debt.remainingAmount)}</div>
-                      </div>
-                      {debt.interestRate != null && (
-                        <div>
-                          <div className="text-muted-foreground">Bunga</div>
-                          <div className="font-bold">{debt.interestRate}% / tahun</div>
-                        </div>
-                      )}
-                      {debt.minimumPayment != null && (
-                        <div>
-                          <div className="text-muted-foreground">Bayar Minimum</div>
-                          <div className="font-bold">{formatCompactCurrency(debt.minimumPayment)}</div>
-                        </div>
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-sm mb-2">
-                        <span>Progress Pembayaran</span>
-                        <span className="font-bold">{progress.toFixed(1)}%</span>
-                      </div>
-                      <Progress value={progress} />
-                    </div>
-                    {debt.dueDate && (
-                      <div className={`text-sm ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
-                        <span className="font-medium">Jatuh Tempo: </span>
-                        {new Date(debt.dueDate).toLocaleDateString("id-ID")}
-                        {isOverdue && <span className="ml-2 font-bold">(TERLAMBAT)</span>}
-                      </div>
-                    )}
-                    {debt.description && <p className="text-sm text-muted-foreground">{debt.description}</p>}
-                  </CardContent>
-                </Card>
-              )
-            })}
+                      </Link>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           </div>
         )}
+
+        {/* E-Wallet Accounts Section */}
+        {ewalletAccounts.length > 0 && (
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold font-manrope mb-4 flex items-center gap-2">
+              <Wallet className="h-6 w-6" />
+              E-Wallet
+            </h2>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {ewalletAccounts.map((account) => {
+                const stats = getAccountStats(account.id)
+                return (
+                  <Card key={account.id} className="neobrutalism-card">
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-lg font-bold flex items-center gap-2">
+                        <div className={`w-4 h-4 rounded-full ${account.color}`} />
+                        {account.name}
+                      </CardTitle>
+                      <div className="flex items-center gap-1">
+                        {account.isSavings && <PiggyBank className="h-4 w-4 text-chart-1" />}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedAccount(account)
+                            setIsEditModalOpen(true)
+                          }}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <div className="text-2xl font-bold">{formatCurrency(account.balance)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          Saldo saat ini
+                          {account.isSavings && " • Tabungan"}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div className="flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3 text-secondary" />
+                          <span className="text-secondary font-semibold">{formatCurrency(stats.income)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <TrendingDown className="h-3 w-3 text-destructive" />
+                          <span className="text-destructive font-semibold">{formatCurrency(stats.expense)}</span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground">{stats.transactionCount} transaksi bulan ini</div>
+
+                      <Link href={`/platforms/${account.id}`}>
+                        <Button className="neobrutalism-button w-full bg-transparent border-2 border-black hover:bg-muted">
+                          <Eye className="h-4 w-4 mr-2" />
+                          Lihat Detail
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Edit Account Modal */}
+        <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+          <DialogContent className="neobrutalism-card max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-bold font-manrope">Edit Akun</DialogTitle>
+            </DialogHeader>
+            {selectedAccount && (
+              <form onSubmit={handleEditAccount} className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name" className="text-sm font-semibold">
+                    Nama Akun
+                  </Label>
+                  <Input
+                    id="edit-name"
+                    className="neobrutalism-input mt-1"
+                    value={selectedAccount.name}
+                    onChange={(e) => setSelectedAccount({ ...selectedAccount, name: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-color" className="text-sm font-semibold">
+                    Warna
+                  </Label>
+                  <Select
+                    value={selectedAccount.color}
+                    onValueChange={(value) => setSelectedAccount({ ...selectedAccount, color: value })}
+                  >
+                    <SelectTrigger className="neobrutalism-input mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {colorOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full ${option.color}`} />
+                            {option.label}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="edit-savings"
+                    checked={selectedAccount.isSavings}
+                    onCheckedChange={(checked) => setSelectedAccount({ ...selectedAccount, isSavings: checked })}
+                  />
+                  <Label htmlFor="edit-savings" className="text-sm font-semibold">
+                    Tandai sebagai akun tabungan
+                  </Label>
+                </div>
+
+                <Button type="submit" className="neobrutalism-button w-full bg-primary text-primary-foreground">
+                  Simpan Perubahan
+                </Button>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )
