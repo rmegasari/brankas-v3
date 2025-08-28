@@ -26,6 +26,22 @@ interface ProcessedTransaction {
   amount: number;
 }
 
+// Fungsi helper untuk mendapatkan tanggal awal dan akhir bulan ini
+const getMonthDateRange = () => {
+  const now = new Date();
+  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  
+  // Format ke YYYY-MM-DD
+  const formatDate = (date: Date) => date.toISOString().split('T')[0];
+  
+  return {
+    start: formatDate(firstDay),
+    end: formatDate(lastDay),
+  };
+};
+
+
 export default function AnalyticsPage() {
   // State untuk data mentah dan yang sudah diproses
   const [monthlyData, setMonthlyData] = useState<any[]>([])
@@ -35,8 +51,11 @@ export default function AnalyticsPage() {
   // State untuk loading, error, dan filter
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  
+  // DIUBAH: Atur tanggal awal dan akhir ke bulan ini secara default
+  const [startDate, setStartDate] = useState(getMonthDateRange().start)
+  const [endDate, setEndDate] = useState(getMonthDateRange().end)
+  
   const [chartType, setChartType] = useState("overview")
 
   // Fungsi untuk memproses data transaksi mentah menjadi data bulanan
@@ -82,6 +101,9 @@ export default function AnalyticsPage() {
   // Ambil data dari Supabase saat komponen dimuat atau filter tanggal berubah
   useEffect(() => {
     const fetchData = async () => {
+      // Jangan fetch jika salah satu tanggal kosong
+      if (!startDate || !endDate) return;
+
       setLoading(true)
       setError(null)
 
