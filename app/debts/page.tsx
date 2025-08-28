@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import { Plus, Edit2, Trash2, CreditCard, Calendar, DollarSign, Loader2, ShieldCheck } from "lucide-react"
 import type { Debt } from "@/types"
-import { supabase } from "@/lib/supabaseClient"
+import { supabase } from "@/lib/supabase"
 
 export default function DebtsPage() {
   // State untuk data, loading, dan error
