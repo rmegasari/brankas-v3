@@ -372,13 +372,27 @@ export default function TransactionsPage() {
                   <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Tidak ada transaksi yang ditemukan</TableCell></TableRow>
                 ) : (
                   paginatedTransactions.map((transaction) => {
-                    const account = accounts.find((acc) => acc.id === transaction.accountId)
-                    const toAccount = transaction.toAccountId ? accounts.find((acc) => acc.id === transaction.toAccountId) : null
+                    // DIUBAH: Logika pencarian akun dibuat lebih aman dengan String()
+                    const account = accounts.find((acc) => String(acc.id) === String(transaction.accountId))
+                    const toAccount = transaction.toAccountId ? accounts.find((acc) => String(acc.id) === String(transaction.toAccountId)) : null
                     return (
                       <TableRow key={transaction.id} className={`neobrutalism-table-row border-b border-border transition-all duration-75 ${transaction.struck ? "opacity-60" : ""}`}>
                         <TableCell className="font-medium">{format(new Date(transaction.date), "dd MMM yyyy", { locale: id })}</TableCell>
                         <TableCell><div className={transaction.struck ? "line-through" : ""}><div className="font-medium">{transaction.description}</div>{transaction.subcategory && (<div className="text-xs text-muted-foreground">{transaction.subcategory}</div>)}</div></TableCell>
-                        <TableCell><div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${account?.color}`} /><span className="text-sm">{account?.name}</span>{toAccount && (<><span className="text-xs text-muted-foreground">→</span><div className={`w-2 h-2 rounded-full ${toAccount.color}`} /><span className="text-sm">{toAccount.name}</span></>)}</div></TableCell>
+                        {/* DIUBAH: Logika tampilan kolom Akun disesuaikan */}
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${account?.color}`} />
+                            <span className="text-sm">{account?.name}</span>
+                            {transaction.type === 'transfer' && toAccount && (
+                              <>
+                                <span className="text-xs text-muted-foreground">→</span>
+                                <div className={`w-2 h-2 rounded-full ${toAccount.color}`} />
+                                <span className="text-sm">{toAccount.name}</span>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell><div className="text-sm">{transaction.category}</div></TableCell>
                         <TableCell><Badge className={`${getTransactionBadgeColor(transaction.type)} flex items-center gap-1 w-fit`}>{getTransactionIcon(transaction.type)}{transaction.type === "income" ? "Masuk" : transaction.type === "expense" ? "Keluar" : "Transfer"}</Badge></TableCell>
                         <TableCell className={`text-right font-semibold ${transaction.type === "income" ? "text-secondary" : transaction.type === "transfer" ? "text-primary" : "text-destructive"} ${transaction.struck ? "line-through" : ""}`}>{formatCurrency(Math.abs(transaction.amount))}</TableCell>
