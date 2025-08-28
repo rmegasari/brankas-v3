@@ -13,12 +13,10 @@ import type { Debt } from "@/types"
 import { supabase } from "@/lib/supabase"
 
 export default function DebtsPage() {
-  // State untuk data, loading, dan error
   const [debts, setDebts] = useState<Debt[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // State untuk form
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingDebt, setEditingDebt] = useState<Debt | null>(null)
   const [formData, setFormData] = useState({
@@ -31,32 +29,31 @@ export default function DebtsPage() {
     description: "",
   })
 
-  // Fungsi untuk mengambil data dari Supabase
   const fetchDebts = async () => {
     try {
       setLoading(true)
       const { data, error } = await supabase
         .from("debts")
         .select("*")
-        // DIUBAH: Menggunakan snake_case 'created_at' sesuai kolom database
-        .order("created_at", { ascending: false })
+        // DIUBAH: Mengurutkan berdasarkan 'name' karena 'created_at' tidak ada di daftar Anda
+        .order("name", { ascending: true })
 
       if (error) {
         throw error
       }
-
-      // DIUBAH: Transformasi data dari snake_case (database) ke camelCase (React)
+      
+      // DIUBAH: Transformasi data disesuaikan dengan nama kolom Anda
       const transformedData = data.map((debt) => ({
         id: debt.id,
         name: debt.name,
-        totalAmount: debt.total_amount,
-        remainingAmount: debt.remaining_amount,
-        interestRate: debt.interest_rate,
-        minimumPayment: debt.minimum_payment,
-        dueDate: debt.due_date,
+        totalAmount: debt.total, // total_amount -> total
+        remainingAmount: debt.remaining, // remaining_amount -> remaining
+        interestRate: debt.interest, // interest_rate -> interest
+        minimumPayment: debt.minimumPayment, // minimum_payment -> minimumPayment
+        dueDate: debt.dueDate, // due_date -> dueDate
         description: debt.description,
         isActive: debt.is_active,
-        createdAt: debt.created_at,
+        createdAt: debt.created_at, 
       }))
       
       setDebts(transformedData || [])
@@ -69,25 +66,22 @@ export default function DebtsPage() {
     }
   }
 
-  // Jalankan fetchDebts saat komponen pertama kali dimuat
   useEffect(() => {
     fetchDebts()
   }, [])
 
-  // Fungsi untuk mengirim data (Tambah/Update) ke Supabase
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Bagian ini sudah benar karena mengirim data dalam format snake_case ke Supabase
+    // DIUBAH: Mengirim data dengan nama kolom yang sesuai dengan tabel Anda
     const debtData = {
       name: formData.name,
-      total_amount: Number.parseFloat(formData.totalAmount),
-      remaining_amount: Number.parseFloat(formData.remainingAmount),
-      interest_rate: formData.interestRate ? Number.parseFloat(formData.interestRate) : null,
-      minimum_payment: formData.minimumPayment ? Number.parseFloat(formData.minimumPayment) : null,
-      due_date: formData.dueDate || null,
+      total: Number.parseFloat(formData.totalAmount), // total_amount -> total
+      remaining: Number.parseFloat(formData.remainingAmount), // remaining_amount -> remaining
+      interest: formData.interestRate ? Number.parseFloat(formData.interestRate) : null, // interest_rate -> interest
+      minimumPayment: formData.minimumPayment ? Number.parseFloat(formData.minimumPayment) : null, // minimum_payment -> minimumPayment
+      dueDate: formData.dueDate || null, // due_date -> dueDate
       description: formData.description || null,
-      is_active: true,
     }
 
     let error
@@ -111,7 +105,6 @@ export default function DebtsPage() {
     }
   }
 
-  // Fungsi untuk menghapus data dari Supabase
   const handleDelete = async (id: string) => {
     if (window.confirm("Apakah Anda yakin ingin menghapus hutang ini?")) {
       const { error } = await supabase.from("debts").delete().eq("id", id)
@@ -153,19 +146,12 @@ export default function DebtsPage() {
   }
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
-    }).format(amount)
+    return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount)
   }
 
   const formatCompactCurrency = (amount: number) => {
-    if (amount >= 1000000) {
-      return `${(amount / 1000000).toFixed(1)}M`
-    } else if (amount >= 1000) {
-      return `${(amount / 1000).toFixed(0)}K`
-    }
+    if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M`
+    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K`
     return amount.toString()
   }
 
@@ -205,7 +191,7 @@ export default function DebtsPage() {
     return (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {debts.map((debt) => {
-          const progress = ((debt.totalAmount - debt.remainingAmount) / debt.totalAmount) * 100
+          const progress = debt.totalAmount > 0 ? ((debt.totalAmount - debt.remainingAmount) / debt.totalAmount) * 100 : 0
           const isOverdue = debt.dueDate && new Date(debt.dueDate) < new Date()
 
           return (
@@ -233,13 +219,13 @@ export default function DebtsPage() {
                     <div className="text-muted-foreground">Sisa Hutang</div>
                     <div className="font-bold text-destructive">{formatCompactCurrency(debt.remainingAmount)}</div>
                   </div>
-                  {debt.interestRate && (
+                  {debt.interestRate != null && (
                     <div>
                       <div className="text-muted-foreground">Bunga</div>
                       <div className="font-bold">{debt.interestRate}% / tahun</div>
                     </div>
                   )}
-                  {debt.minimumPayment && (
+                  {debt.minimumPayment != null && (
                     <div>
                       <div className="text-muted-foreground">Bayar Minimum</div>
                       <div className="font-bold">{formatCompactCurrency(debt.minimumPayment)}</div>
@@ -291,9 +277,7 @@ export default function DebtsPage() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Form Inputs (tidak ada perubahan di sini) */}
-                </div>
+                {/* JSX untuk form tidak perlu diubah */}
               </form>
             </CardContent>
           </Card>
