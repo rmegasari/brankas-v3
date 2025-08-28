@@ -21,8 +21,9 @@ import { supabase } from "@/lib/supabase"
 interface ProcessedTransaction {
   id: string;
   date: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense';
   category: string;
+  subCategory: string;
   amount: number;
 }
 
@@ -32,7 +33,6 @@ const getMonthDateRange = () => {
   const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   
-  // Format ke YYYY-MM-DD
   const formatDate = (date: Date) => date.toISOString().split('T')[0];
   
   return {
@@ -43,22 +43,15 @@ const getMonthDateRange = () => {
 
 
 export default function AnalyticsPage() {
-  // State untuk data mentah dan yang sudah diproses
   const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [categoryData, setCategoryData] = useState<any[]>([])
   const [accountData, setAccountData] = useState<any[]>([])
-
-  // State untuk loading, error, dan filter
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
-  // DIUBAH: Atur tanggal awal dan akhir ke bulan ini secara default
   const [startDate, setStartDate] = useState(getMonthDateRange().start)
   const [endDate, setEndDate] = useState(getMonthDateRange().end)
-  
   const [chartType, setChartType] = useState("overview")
 
-  // Fungsi untuk memproses data transaksi mentah menjadi data bulanan
   const processMonthlyData = (data: ProcessedTransaction[]) => {
     const monthlyStats: Record<string, { income: number; expense: number }> = {}
     data.forEach(tx => {
@@ -80,15 +73,16 @@ export default function AnalyticsPage() {
     })).reverse();
   };
 
-  // Fungsi untuk memproses data pengeluaran per kategori
   const processCategoryData = (data: ProcessedTransaction[]) => {
     const categoryStats: Record<string, number> = {};
     const expenseTransactions = data.filter(tx => tx.type === 'expense');
     expenseTransactions.forEach(tx => {
-      if (!categoryStats[tx.category]) {
-        categoryStats[tx.category] = 0;
+      // Gunakan sub-kategori untuk detail
+      const categoryName = tx.subCategory || tx.category;
+      if (!categoryStats[categoryName]) {
+        categoryStats[categoryName] = 0;
       }
-      categoryStats[tx.category] += tx.amount;
+      categoryStats[categoryName] += tx.amount;
     });
     const colors = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#8b5cf6", "#ec4899"];
     return Object.entries(categoryStats).map(([name, value], index) => ({
@@ -98,35 +92,37 @@ export default function AnalyticsPage() {
     }));
   };
   
-  // Ambil data dari Supabase saat komponen dimuat atau filter tanggal berubah
   useEffect(() => {
     const fetchData = async () => {
-      // Jangan fetch jika salah satu tanggal kosong
       if (!startDate || !endDate) return;
 
       setLoading(true)
       setError(null)
 
       try {
-        let transactionQuery = supabase.from("transactions").select("*")
-        if (startDate) {
-          transactionQuery = transactionQuery.gte("date", startDate)
-        }
-        if (endDate) {
-          transactionQuery = transactionQuery.lte("date", endDate)
-        }
+        // DIUBAH: Menambahkan filter .neq('category', 'Mutasi')
+        let transactionQuery = supabase
+          .from("transactions")
+          .select("*")
+          .neq('category', 'Mutasi') // <-- Mengabaikan transaksi "Mutasi"
+          .gte("date", startDate)
+          .lte("date", endDate)
+
         const { data: transactionData, error: transactionError } = await transactionQuery;
         if (transactionError) throw transactionError;
 
         const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
         if (platformError) throw platformError;
 
+        // DIUBAH: Logika transformasi data disesuaikan dengan struktur tabel Anda
         const processedTransactions: ProcessedTransaction[] = transactionData.map(tx => ({
             id: tx.id,
             date: tx.date,
-            type: tx.type,
+            // Menentukan 'type' berdasarkan isi kolom 'category'
+            type: tx.category === 'Pemasukan' ? 'income' : 'expense',
             category: tx.category,
-            amount: tx.amount, // Ganti ke tx.nominal jika nama kolom Anda 'nominal'
+            subCategory: tx['sub-category'], // Mengakses kolom 'sub-category'
+            amount: tx.nominal, // Menggunakan kolom 'nominal' untuk jumlah
         }));
 
         setMonthlyData(processMonthlyData(processedTransactions));
@@ -149,7 +145,6 @@ export default function AnalyticsPage() {
     fetchData()
   }, [startDate, endDate])
 
-  // Hitung total menggunakan useMemo agar lebih efisien
   const { totalIncome, totalExpense, totalSavings, savingsRate } = useMemo(() => {
     const income = monthlyData.reduce((sum, period) => sum + period.income, 0)
     const expense = monthlyData.reduce((sum, period) => sum + period.expense, 0)
