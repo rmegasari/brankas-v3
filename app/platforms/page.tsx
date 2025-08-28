@@ -39,7 +39,8 @@ export default function PlatformsPage() {
       setLoading(true)
       setError(null)
       try {
-        const { data: platformData, error: platformError } = await supabase.from("platforms").select("*").order('name');
+        // DIUBAH: Mengurutkan berdasarkan kolom 'account' yang benar
+        const { data: platformData, error: platformError } = await supabase.from("platforms").select("*").order('account', { ascending: true });
         if (platformError) throw platformError;
 
         const { data: transactionData, error: transactionError } = await supabase.from("transactions").select("*");
@@ -52,7 +53,7 @@ export default function PlatformsPage() {
           type: p.type_account,
           balance: p.saldo,
           isSavings: p.saving,
-          color: `bg-${p.color}-500`, // Menyesuaikan format warna
+          color: `bg-${p.color}-500`,
         })) || []);
 
         // Transformasi data transactions dari Supabase
@@ -70,7 +71,7 @@ export default function PlatformsPage() {
 
       } catch (err) {
         console.error("Error fetching platform data:", err);
-        setError("Gagal memuat data platform.");
+        setError("Gagal memuat data platform. Pastikan RLS Policy sudah benar.");
       } finally {
         setLoading(false);
       }
@@ -87,10 +88,10 @@ export default function PlatformsPage() {
   const getAccountStats = (accountName: string) => {
     const accountTransactions = transactions.filter((t) => t.accountId === accountName || t.toAccountId === accountName)
     const income = accountTransactions
-      .filter((t) => t.type === "income" && t.accountId === accountName || t.type === "transfer" && t.toAccountId === accountName)
+      .filter((t) => (t.type === "income" && t.accountId === accountName) || (t.type === "transfer" && t.toAccountId === accountName))
       .reduce((sum, t) => sum + Math.abs(t.amount), 0)
     const expense = accountTransactions
-      .filter((t) => t.type === "expense" && t.accountId === accountName || t.type === "transfer" && t.accountId === accountName)
+      .filter((t) => (t.type === "expense" && t.accountId === accountName) || (t.type === "transfer" && t.accountId === accountName))
       .reduce((sum, t) => sum + Math.abs(t.amount), 0)
 
     return { income, expense, transactionCount: accountTransactions.length }
@@ -120,7 +121,7 @@ export default function PlatformsPage() {
             isSavings: data.saving,
             color: `bg-${data.color}-500`,
         };
-        setAccounts([...accounts, addedAccount]);
+        setAccounts([...accounts, addedAccount].sort((a, b) => a.name.localeCompare(b.name)));
         setIsAddModalOpen(false)
         setNewAccount({ name: "", type: "Rekening Bank", balance: "", isSavings: false, color: "blue" });
     }
@@ -171,6 +172,7 @@ export default function PlatformsPage() {
     { value: "orange", label: "Oranye", color: "bg-orange-500" },
     { value: "pink", label: "Pink", color: "bg-pink-500" },
     { value: "indigo", label: "Indigo", color: "bg-indigo-500" },
+    { value: "gray", label: "Abu-abu", color: "bg-gray-500" },
   ]
 
   const bankAccounts = accounts.filter((account) => account.type === "Rekening Bank")
