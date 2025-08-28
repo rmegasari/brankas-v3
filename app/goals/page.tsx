@@ -1,40 +1,23 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
-import { Plus, Target, Home, Car, Plane, GraduationCap, Heart, Edit } from "lucide-react"
-import { accounts as initialAccounts } from "@/lib/data"
+import { Plus, Target, Home, Car, Plane, GraduationCap, Heart, Edit, Trash2, Loader2 } from "lucide-react"
 import type { SavingsGoal, Account } from "@/types"
+import { supabase } from "@/lib/supabase"
 
 export default function GoalsPage() {
-  const [accounts] = useState<Account[]>(initialAccounts)
-  const [goals, setGoals] = useState<SavingsGoal[]>([
-    {
-      id: "1",
-      name: "Rumah Impian",
-      targetAmount: 500000000,
-      currentAmount: 0,
-      deadline: "2026-12-31",
-      description: "Menabung untuk DP rumah",
-      isActive: true,
-      createdAt: "2024-01-01",
-    },
-    {
-      id: "2",
-      name: "Mobil Baru",
-      targetAmount: 200000000,
-      currentAmount: 0,
-      deadline: "2025-06-30",
-      description: "Mobil keluarga",
-      isActive: true,
-      createdAt: "2024-02-01",
-    },
-  ])
+  // State untuk data dari Supabase
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [goals, setGoals] = useState<SavingsGoal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  // State untuk form
   const [showAddForm, setShowAddForm] = useState(false)
   const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null)
   const [newGoal, setNewGoal] = useState({
@@ -44,15 +27,55 @@ export default function GoalsPage() {
     description: "",
   })
 
+  // Fetch data saat komponen dimuat
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const { data: goalsData, error: goalsError } = await supabase.from("goals").select("*").order("created_at");
+        if (goalsError) throw goalsError;
+
+        const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
+        if (platformError) throw platformError;
+
+        setAccounts(platformData.map(p => ({
+          id: p.id,
+          name: p.account,
+          type: p.type_account,
+          balance: p.saldo,
+          isSavings: p.saving,
+          color: `bg-${p.color}-500`,
+        })) || []);
+
+        setGoals(goalsData.map(g => ({
+          id: g.id,
+          name: g.goal,
+          targetAmount: g.target,
+          currentAmount: 0, // Akan dihitung nanti
+          deadline: g.deadline,
+          description: g.description,
+          isActive: true, // Asumsi semua aktif
+          createdAt: g.created_at,
+        })) || []);
+
+      } catch (err) {
+        console.error("Error fetching goals data:", err);
+        setError("Gagal memuat data tujuan tabungan.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
+
   const totalSavingsBalance = accounts
     .filter((account) => account.isSavings)
     .reduce((sum, account) => sum + account.balance, 0)
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      minimumFractionDigits: 0,
+      style: "currency", currency: "IDR", minimumFractionDigits: 0,
     }).format(amount)
   }
 
@@ -66,37 +89,64 @@ export default function GoalsPage() {
     return Target
   }
 
-  const addGoal = () => {
-    if (newGoal.name && newGoal.targetAmount) {
-      const goal: SavingsGoal = {
-        id: Date.now().toString(),
-        name: newGoal.name,
-        targetAmount: Number.parseInt(newGoal.targetAmount),
-        currentAmount: 0,
-        deadline: newGoal.deadline || undefined,
-        description: newGoal.description || undefined,
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      }
-      setGoals((prev) => [...prev, goal])
-      setNewGoal({ name: "", targetAmount: "", deadline: "", description: "" })
-      setShowAddForm(false)
+  const handleSubmit = async () => {
+    if (!newGoal.name || !newGoal.targetAmount) {
+      alert("Nama Tujuan dan Target Jumlah wajib diisi.");
+      return;
     }
-  }
 
-  const updateGoal = () => {
-    if (editingGoal && newGoal.name && newGoal.targetAmount) {
-      const updatedGoal: SavingsGoal = {
-        ...editingGoal,
-        name: newGoal.name,
-        targetAmount: Number.parseInt(newGoal.targetAmount),
-        deadline: newGoal.deadline || undefined,
-        description: newGoal.description || undefined,
+    const goalData = {
+      goal: newGoal.name,
+      target: Number.parseInt(newGoal.targetAmount),
+      deadline: newGoal.deadline || null,
+      description: newGoal.description || null,
+    };
+
+    if (editingGoal) {
+      // Update goal
+      const { error } = await supabase.from('goals').update(goalData).eq('id', editingGoal.id);
+      if (error) {
+        console.error("Error updating goal:", error);
+        alert("Gagal memperbarui tujuan.");
+      } else {
+        setGoals(goals.map(g => g.id === editingGoal.id ? { ...editingGoal, ...newGoal, targetAmount: Number(newGoal.targetAmount) } : g));
       }
-      setGoals((prev) => prev.map((goal) => (goal.id === editingGoal.id ? updatedGoal : goal)))
-      setEditingGoal(null)
-      setNewGoal({ name: "", targetAmount: "", deadline: "", description: "" })
+    } else {
+      // Add new goal
+      const { data, error } = await supabase.from('goals').insert([goalData]).select().single();
+      if (error) {
+        console.error("Error adding goal:", error);
+        alert("Gagal menambahkan tujuan.");
+      } else {
+        const addedGoal: SavingsGoal = {
+          id: data.id,
+          name: data.goal,
+          targetAmount: data.target,
+          currentAmount: 0,
+          deadline: data.deadline,
+          description: data.description,
+          isActive: true,
+          createdAt: data.created_at,
+        };
+        setGoals([...goals, addedGoal]);
+      }
     }
+    
+    setNewGoal({ name: "", targetAmount: "", deadline: "", description: "" });
+    setShowAddForm(false);
+    setEditingGoal(null);
+  }
+  
+  const handleDelete = async (goalId: string) => {
+      if (window.confirm("Apakah Anda yakin ingin menghapus tujuan ini?")) {
+          const { error } = await supabase.from('goals').delete().eq('id', goalId);
+          if (error) {
+              console.error("Error deleting goal:", error);
+              alert("Gagal menghapus tujuan.");
+          } else {
+              setGoals(goals.filter(g => g.id !== goalId));
+          }
+      }
   }
 
   const startEdit = (goal: SavingsGoal) => {
@@ -107,10 +157,20 @@ export default function GoalsPage() {
       deadline: goal.deadline || "",
       description: goal.description || "",
     })
+    setShowAddForm(true);
   }
 
   const calculateProgress = (targetAmount: number) => {
+    if (targetAmount === 0) return 0;
     return Math.min((totalSavingsBalance / targetAmount) * 100, 100)
+  }
+  
+  if (loading) {
+    return <div className="flex justify-center items-center min-h-screen"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>
+  }
+
+  if (error) {
+    return <div className="text-center py-20 text-destructive">{error}</div>
   }
 
   return (
@@ -121,7 +181,7 @@ export default function GoalsPage() {
           <h1 className="text-3xl font-bold font-manrope">Tujuan Tabungan</h1>
         </div>
         <Button
-          onClick={() => setShowAddForm(true)}
+          onClick={() => { setEditingGoal(null); setShowAddForm(true); }}
           className="bg-black hover:bg-gray-800 text-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[4px] hover:translate-y-[4px] transition-all duration-75 font-semibold"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -144,7 +204,7 @@ export default function GoalsPage() {
       </Card>
 
       {/* Add/Edit Goal Form */}
-      {(showAddForm || editingGoal) && (
+      {showAddForm && (
         <Card className="border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
           <CardHeader className="border-b-2 border-black bg-black text-white">
             <CardTitle>{editingGoal ? "Edit Tujuan Tabungan" : "Tambah Tujuan Tabungan Baru"}</CardTitle>
@@ -195,7 +255,7 @@ export default function GoalsPage() {
             </div>
             <div className="flex gap-2 mt-6">
               <Button
-                onClick={editingGoal ? updateGoal : addGoal}
+                onClick={handleSubmit}
                 className="bg-black hover:bg-gray-800 text-white border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[2px] hover:translate-y-[2px] transition-all duration-75"
               >
                 {editingGoal ? "Update" : "Simpan"}
@@ -220,9 +280,8 @@ export default function GoalsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {goals.map((goal) => {
           const Icon = getGoalIcon(goal.name)
-          const currentAmount = totalSavingsBalance
           const progress = calculateProgress(goal.targetAmount)
-          const remaining = goal.targetAmount - currentAmount
+          const remaining = goal.targetAmount - totalSavingsBalance
 
           return (
             <Card
@@ -235,14 +294,14 @@ export default function GoalsPage() {
                     <Icon className="h-5 w-5 text-black" />
                     <span className="text-lg">{goal.name}</span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => startEdit(goal)}
-                    className="h-8 w-8 p-0 hover:bg-gray-100"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => startEdit(goal)} className="h-8 w-8 p-0 hover:bg-gray-100">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(goal.id)} className="h-8 w-8 p-0 hover:bg-gray-100 text-destructive">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-6">
@@ -262,7 +321,7 @@ export default function GoalsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Terkumpul:</span>
-                      <span className="font-bold text-black">{formatCurrency(currentAmount)}</span>
+                      <span className="font-bold text-black">{formatCurrency(totalSavingsBalance)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Sisa:</span>
@@ -271,7 +330,7 @@ export default function GoalsPage() {
                     {goal.deadline && (
                       <div className="flex justify-between">
                         <span>Target Tanggal:</span>
-                        <span className="font-bold">{new Date(goal.deadline).toLocaleDateString("id-ID")}</span>
+                        <span className="font-bold">{new Date(goal.deadline).toLocaleDateString("id-ID", { year: 'numeric', month: 'long', day: 'numeric' })}</span>
                       </div>
                     )}
                   </div>
