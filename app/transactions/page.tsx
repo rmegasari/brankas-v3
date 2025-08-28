@@ -72,7 +72,8 @@ export default function TransactionsPage() {
           subcategory: tx['sub-category'],
           amount: tx.nominal,
           type: tx.category === 'Pemasukan' ? 'income' : tx.category === 'Mutasi' ? 'transfer' : 'expense',
-          accountId: tx.account,
+          // accountId sekarang berisi NAMA akun, bukan ID
+          accountId: tx.account, 
           toAccountId: tx.destination_account,
           receiptUrl: tx.receipt_url,
           struck: tx.struck || false,
@@ -97,11 +98,9 @@ export default function TransactionsPage() {
   // Fungsi handler sekarang berinteraksi dengan Supabase
   const handleTransactionUpdate = async (updatedTransaction: Transaction) => {
     setTransactions(transactions.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t)))
-    // Logika update ke Supabase bisa ditambahkan di sini jika diperlukan
   }
 
   const handleTransactionDelete = async (transactionId: string) => {
-    // Optimistic UI update
     const originalTransactions = transactions;
     setTransactions(transactions.filter((t) => t.id !== transactionId));
     
@@ -109,7 +108,7 @@ export default function TransactionsPage() {
     if (error) {
       console.error("Failed to delete transaction:", error);
       alert("Gagal menghapus transaksi.");
-      setTransactions(originalTransactions); // Kembalikan jika gagal
+      setTransactions(originalTransactions);
     }
   }
 
@@ -118,23 +117,21 @@ export default function TransactionsPage() {
     if (!transaction) return;
 
     const newStruckValue = !transaction.struck;
-    // Optimistic UI update
     setTransactions(transactions.map((t) => (t.id === transactionId ? { ...t, struck: newStruckValue } : t)));
 
     const { error } = await supabase.from('transactions').update({ struck: newStruckValue }).eq('id', transactionId);
     if (error) {
       console.error("Failed to update struck status:", error);
       alert("Gagal memperbarui status transaksi.");
-      // Kembalikan jika gagal
       setTransactions(transactions.map((t) => (t.id === transactionId ? { ...t, struck: !newStruckValue } : t)));
     }
   }
 
   const filteredAndSortedTransactions = useMemo(() => {
-    // Logika filter dan sort Anda tidak berubah, sekarang bekerja pada data Supabase
     const filtered = transactions.filter((transaction) => {
       if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) return false
-      if (selectedAccount !== "all" && transaction.accountId !== selectedAccount) return false
+      // DIUBAH: Filter akun sekarang berdasarkan nama
+      if (selectedAccount !== "all" && transaction.accountId !== accounts.find(a => a.id === selectedAccount)?.name) return false
       if (selectedCategory !== "all" && transaction.category !== selectedCategory) return false
       if (selectedType !== "all" && transaction.type !== selectedType) return false
       if (dateRange.from || dateRange.to) {
@@ -156,7 +153,7 @@ export default function TransactionsPage() {
     })
 
     return filtered
-  }, [transactions, searchTerm, selectedAccount, selectedCategory, selectedType, dateRange, sortBy, sortOrder])
+  }, [transactions, accounts, searchTerm, selectedAccount, selectedCategory, selectedType, dateRange, sortBy, sortOrder])
 
   const paginatedTransactions = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -279,7 +276,6 @@ export default function TransactionsPage() {
                   <SelectTrigger className="neobrutalism-input"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Semua Kategori</SelectItem>
-                    {/* Menggunakan state categories dari Supabase */}
                     {categories.map((category) => (
                       <SelectItem key={category.id} value={category.name}>{category.name}</SelectItem>
                     ))}
@@ -372,14 +368,13 @@ export default function TransactionsPage() {
                   <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Tidak ada transaksi yang ditemukan</TableCell></TableRow>
                 ) : (
                   paginatedTransactions.map((transaction) => {
-                    // DIUBAH: Logika pencarian akun dibuat lebih aman dengan String()
-                    const account = accounts.find((acc) => String(acc.id) === String(transaction.accountId))
-                    const toAccount = transaction.toAccountId ? accounts.find((acc) => String(acc.id) === String(transaction.toAccountId)) : null
+                    // DIUBAH: Logika pencarian akun sekarang berdasarkan NAMA
+                    const account = accounts.find((acc) => acc.name === transaction.accountId)
+                    const toAccount = transaction.toAccountId ? accounts.find((acc) => acc.name === transaction.toAccountId) : null
                     return (
                       <TableRow key={transaction.id} className={`neobrutalism-table-row border-b border-border transition-all duration-75 ${transaction.struck ? "opacity-60" : ""}`}>
                         <TableCell className="font-medium">{format(new Date(transaction.date), "dd MMM yyyy", { locale: id })}</TableCell>
                         <TableCell><div className={transaction.struck ? "line-through" : ""}><div className="font-medium">{transaction.description}</div>{transaction.subcategory && (<div className="text-xs text-muted-foreground">{transaction.subcategory}</div>)}</div></TableCell>
-                        {/* DIUBAH: Logika tampilan kolom Akun disesuaikan */}
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${account?.color}`} />
