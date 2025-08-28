@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/debts/page": "app/debts/page.js",
+  "/analytics/page": "app/analytics/page.js",
+  "/goals/page": "app/goals/page.js",
+  "/page": "app/page.js",
+  "/platforms/[id]/page": "app/platforms/[id]/page.js",
+  "/platforms/page": "app/platforms/page.js",
+  "/profile/page": "app/profile/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/transactions/page": "app/transactions/page.js",
+  "/login/page": "app/login/page.js"
+}

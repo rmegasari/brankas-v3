@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/debts/page": "/debts",
+  "/analytics/page": "/analytics",
+  "/goals/page": "/goals",
+  "/page": "/",
+  "/platforms/[id]/page": "/platforms/[id]",
+  "/platforms/page": "/platforms",
+  "/profile/page": "/profile",
+  "/settings/page": "/settings",
+  "/transactions/page": "/transactions",
+  "/login/page": "/login"
+}
