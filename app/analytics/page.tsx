@@ -43,6 +43,7 @@ const getMonthDateRange = () => {
 
 
 export default function AnalyticsPage() {
+  const [transactions, setTransactions] = useState<ProcessedTransaction[]>([])
   const [monthlyData, setMonthlyData] = useState<any[]>([])
   const [categoryData, setCategoryData] = useState<any[]>([])
   const [accountData, setAccountData] = useState<any[]>([])
@@ -52,33 +53,38 @@ export default function AnalyticsPage() {
   const [endDate, setEndDate] = useState(getMonthDateRange().end)
   const [chartType, setChartType] = useState("overview")
 
+  // DIUBAH: Fungsi ini sekarang mengurutkan bulan dengan benar
   const processMonthlyData = (data: ProcessedTransaction[]) => {
-    const monthlyStats: Record<string, { income: number; expense: number }> = {}
+    const monthlyStats: Record<string, { income: number; expense: number; date: Date }> = {};
     data.forEach(tx => {
-      const month = new Date(tx.date).toLocaleDateString("id-ID", { year: '2-digit', month: "short" })
-      if (!monthlyStats[month]) {
-        monthlyStats[month] = { income: 0, expense: 0 }
-      }
-      if (tx.type === 'income') {
-        monthlyStats[month].income += tx.amount
-      } else if (tx.type === 'expense') {
-        monthlyStats[month].expense += tx.amount
-      }
+        const date = new Date(tx.date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth()).padStart(2, '0')}`;
+
+        if (!monthlyStats[monthKey]) {
+            monthlyStats[monthKey] = { income: 0, expense: 0, date: date };
+        }
+        if (tx.type === 'income') {
+            monthlyStats[monthKey].income += tx.amount;
+        } else if (tx.type === 'expense') {
+            monthlyStats[monthKey].expense += tx.amount;
+        }
     });
-    return Object.entries(monthlyStats).map(([month, values]) => ({
-      month,
-      income: values.income,
-      expense: values.expense,
-      savings: values.income - values.expense,
-    })).reverse();
+
+    return Object.values(monthlyStats)
+        .sort((a, b) => a.date.getTime() - b.date.getTime())
+        .map(values => ({
+            month: values.date.toLocaleDateString("id-ID", { year: '2-digit', month: "short" }),
+            income: values.income,
+            expense: values.expense,
+            savings: values.income - values.expense,
+        }));
   };
 
   const processCategoryData = (data: ProcessedTransaction[]) => {
     const categoryStats: Record<string, number> = {};
     const expenseTransactions = data.filter(tx => tx.type === 'expense');
     expenseTransactions.forEach(tx => {
-      // Gunakan sub-kategori untuk detail
-      const categoryName = tx.subCategory || tx.category;
+      const categoryName = tx.subCategory || "Lainnya";
       if (!categoryStats[categoryName]) {
         categoryStats[categoryName] = 0;
       }
@@ -100,11 +106,10 @@ export default function AnalyticsPage() {
       setError(null)
 
       try {
-        // DIUBAH: Menambahkan filter .neq('category', 'Mutasi')
         let transactionQuery = supabase
           .from("transactions")
           .select("*")
-          .neq('category', 'Mutasi') // <-- Mengabaikan transaksi "Mutasi"
+          .neq('category', 'Mutasi')
           .gte("date", startDate)
           .lte("date", endDate)
 
@@ -114,17 +119,16 @@ export default function AnalyticsPage() {
         const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
         if (platformError) throw platformError;
 
-        // DIUBAH: Logika transformasi data disesuaikan dengan struktur tabel Anda
         const processedTransactions: ProcessedTransaction[] = transactionData.map(tx => ({
             id: tx.id,
             date: tx.date,
-            // Menentukan 'type' berdasarkan isi kolom 'category'
             type: tx.category === 'Pemasukan' ? 'income' : 'expense',
             category: tx.category,
-            subCategory: tx['sub-category'], // Mengakses kolom 'sub-category'
-            amount: tx.nominal, // Menggunakan kolom 'nominal' untuk jumlah
+            subCategory: tx['sub-category'],
+            amount: tx.nominal,
         }));
 
+        setTransactions(processedTransactions);
         setMonthlyData(processMonthlyData(processedTransactions));
         setCategoryData(processCategoryData(processedTransactions));
         setAccountData(platformData.map(acc => ({
@@ -153,7 +157,6 @@ export default function AnalyticsPage() {
     return { totalIncome: income, totalExpense: expense, totalSavings: savings, savingsRate: rate }
   }, [monthlyData])
 
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
@@ -163,17 +166,46 @@ export default function AnalyticsPage() {
   }
 
   const formatCompactCurrency = (amount: number) => {
-    if (amount >= 1000000) {
-      return `${(amount / 1000000).toFixed(1)}M`
-    } else if (amount >= 1000) {
-      return `${(amount / 1000).toFixed(0)}K`
-    }
+    if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M`
+    if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K`
     return amount.toString()
   }
 
+  // DIUBAH: Fungsi ini sekarang berfungsi untuk mengunduh file CSV
+  const exportToCSV = () => {
+    if (transactions.length === 0) {
+      alert("Tidak ada data untuk diexport.");
+      return;
+    }
+    const headers = ["ID", "Tanggal", "Tipe", "Kategori", "Sub-Kategori", "Jumlah"];
+    const csvRows = [
+      headers.join(','),
+      ...transactions.map(tx => [
+        tx.id,
+        tx.date,
+        tx.type,
+        tx.category,
+        `"${tx.subCategory || ''}"`,
+        tx.amount
+      ].join(','))
+    ];
+    
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `analytics_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  };
+
   const exportToPDF = () => { alert("Fitur Export PDF akan segera tersedia") }
   const exportToJPEG = () => { alert("Fitur Export JPEG akan segera tersedia") }
-  const exportToXLSX = () => { alert("Fitur Export XLSX akan segera tersedia") }
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
@@ -182,64 +214,44 @@ export default function AnalyticsPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-4xl font-bold text-foreground font-manrope flex items-center gap-2">
               Analytics
-              <HelpTooltip content="Halaman analisis keuangan dengan berbagai grafik dan metrik untuk memahami pola pemasukan, pengeluaran, dan tabungan Anda." />
+              <HelpTooltip content="Halaman analisis keuangan dengan berbagai grafik dan metrik." />
             </h1>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <Label htmlFor="startDate" className="text-sm font-semibold flex items-center gap-1">
-                Dari:
-                <HelpTooltip content="Pilih tanggal awal untuk filter periode analisis. Data akan ditampilkan mulai dari tanggal ini." />
-              </Label>
+              <Label htmlFor="startDate" className="text-sm font-semibold">Dari:</Label>
               <Input
-                id="startDate"
-                type="date"
-                value={startDate}
+                id="startDate" type="date" value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="neobrutalism-input w-auto"
               />
             </div>
             <div className="flex items-center gap-2">
-              <Label htmlFor="endDate" className="text-sm font-semibold flex items-center gap-1">
-                Sampai:
-                <HelpTooltip content="Pilih tanggal akhir untuk filter periode analisis. Data akan ditampilkan sampai tanggal ini." />
-              </Label>
+              <Label htmlFor="endDate" className="text-sm font-semibold">Sampai:</Label>
               <Input
-                id="endDate"
-                type="date"
-                value={endDate}
+                id="endDate" type="date" value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
                 className="neobrutalism-input w-auto"
               />
             </div>
-            <div className="relative">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button className="neobrutalism-button flex items-center gap-1">
-                    <FileText className="h-4 w-4 mr-2" />
-                    Export
-                    <HelpTooltip content="Export data analisis ke berbagai format: PDF untuk laporan, JPEG untuk gambar, atau XLSX untuk spreadsheet." />
-                    <ChevronDown className="h-4 w-4 ml-2" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-48 p-2" align="end">
-                  <div className="space-y-1">
-                    <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToPDF}>
-                      <FileText className="h-4 w-4 mr-2" />
-                      Export PDF
-                    </Button>
-                    <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToJPEG}>
-                      <ImageIcon className="h-4 w-4 mr-2" />
-                      Export JPEG
-                    </Button>
-                    <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToXLSX}>
-                      <FileSpreadsheet className="h-4 w-4 mr-2" />
-                      Export XLSX
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button className="neobrutalism-button flex items-center gap-1">
+                  <FileText className="h-4 w-4 mr-2" /> Export <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="end">
+                <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToPDF}>
+                  <FileText className="h-4 w-4 mr-2" /> Export PDF
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToJPEG}>
+                  <ImageIcon className="h-4 w-4 mr-2" /> Export JPEG
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm" onClick={exportToCSV}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" /> Export CSV (Excel)
+                </Button>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -252,232 +264,51 @@ export default function AnalyticsPage() {
         ) : (
           <>
             <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 max-w-6xl">
-              <Card className="neobrutalism-card max-w-sm mx-auto sm:mx-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1">
-                    Total Pemasukan
-                    <HelpTooltip content="Jumlah total pemasukan dari semua sumber dalam periode yang dipilih, termasuk gaji, freelance, bonus, dan investasi." />
-                  </CardTitle>
-                  <TrendingUp className="h-5 w-5 text-secondary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-lg font-bold text-secondary break-words">{formatCompactCurrency(totalIncome)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalIncome)}</div>
-                </CardContent>
-              </Card>
-              <Card className="neobrutalism-card max-w-sm mx-auto sm:mx-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1">
-                    Total Pengeluaran
-                    <HelpTooltip content="Jumlah total pengeluaran dari semua kategori dalam periode yang dipilih, seperti belanja, transport, hiburan, dan kebutuhan lainnya." />
-                  </CardTitle>
-                  <TrendingDown className="h-5 w-5 text-destructive" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-lg font-bold text-destructive break-words">
-                    {formatCompactCurrency(totalExpense)}
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalExpense)}</div>
-                </CardContent>
-              </Card>
-              <Card className="neobrutalism-card max-w-sm mx-auto sm:mx-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1">
-                    Total Tabungan
-                    <HelpTooltip content="Jumlah total tabungan yang berhasil dikumpulkan dalam periode ini, dihitung dari selisih pemasukan dan pengeluaran." />
-                  </CardTitle>
-                  <TrendingUp className="h-5 w-5 text-chart-1" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-lg font-bold text-chart-1 break-words">{formatCompactCurrency(totalSavings)}</div>
-                  <div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalSavings)}</div>
-                </CardContent>
-              </Card>
-              <Card className="neobrutalism-card max-w-sm mx-auto sm:mx-0">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-semibold flex items-center gap-1">
-                    Tingkat Tabungan
-                    <HelpTooltip content="Persentase dari pemasukan yang berhasil ditabung. Target ideal adalah 20-30% dari total pemasukan untuk kesehatan finansial yang baik." />
-                  </CardTitle>
-                  <PieChartIcon className="h-5 w-5 text-primary" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-lg font-bold text-primary">{savingsRate}%</div>
-                  <p className="text-xs text-muted-foreground">Target: 30%</p>
-                </CardContent>
-              </Card>
+              <Card className="neobrutalism-card"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-semibold">Total Pemasukan</CardTitle><TrendingUp className="h-5 w-5 text-secondary" /></CardHeader><CardContent><div className="text-lg font-bold text-secondary break-words">{formatCompactCurrency(totalIncome)}</div><div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalIncome)}</div></CardContent></Card>
+              <Card className="neobrutalism-card"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-semibold">Total Pengeluaran</CardTitle><TrendingDown className="h-5 w-5 text-destructive" /></CardHeader><CardContent><div className="text-lg font-bold text-destructive break-words">{formatCompactCurrency(totalExpense)}</div><div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalExpense)}</div></CardContent></Card>
+              <Card className="neobrutalism-card"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-semibold">Total Tabungan</CardTitle><TrendingUp className="h-5 w-5 text-chart-1" /></CardHeader><CardContent><div className="text-lg font-bold text-chart-1 break-words">{formatCompactCurrency(totalSavings)}</div><div className="text-xs text-muted-foreground mt-1">{formatCurrency(totalSavings)}</div></CardContent></Card>
+              <Card className="neobrutalism-card"><CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2"><CardTitle className="text-sm font-semibold">Tingkat Tabungan</CardTitle><PieChartIcon className="h-5 w-5 text-primary" /></CardHeader><CardContent><div className="text-lg font-bold text-primary">{savingsRate}%</div><p className="text-xs text-muted-foreground">Target: 30%</p></CardContent></Card>
             </div>
+            
+            {/* DIUBAH: Tombol Tren dan Forecasting dikembalikan */}
             <div className="mb-6">
               <div className="flex flex-wrap gap-2">
-                <Button
-                  variant={chartType === "overview" ? "default" : "outline"}
-                  onClick={() => setChartType("overview")}
-                  className="neobrutalism-button flex items-center gap-1"
-                >
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Overview
-                </Button>
-                <Button
-                  variant={chartType === "categories" ? "default" : "outline"}
-                  onClick={() => setChartType("categories")}
-                  className="neobrutalism-button flex items-center gap-1"
-                >
-                  <PieChartIcon className="h-4 w-4 mr-2" />
-                  Kategori
-                </Button>
-                <Button
-                  variant={chartType === "accounts" ? "default" : "outline"}
-                  onClick={() => setChartType("accounts")}
-                  className="neobrutalism-button flex items-center gap-1"
-                >
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Akun
-                </Button>
+                <Button variant={chartType === "overview" ? "default" : "outline"} onClick={() => setChartType("overview")} className="neobrutalism-button flex items-center gap-1"><BarChart3 className="h-4 w-4 mr-2" />Overview</Button>
+                <Button variant={chartType === "categories" ? "default" : "outline"} onClick={() => setChartType("categories")} className="neobrutalism-button flex items-center gap-1"><PieChartIcon className="h-4 w-4 mr-2" />Kategori</Button>
+                <Button variant={chartType === "accounts" ? "default" : "outline"} onClick={() => setChartType("accounts")} className="neobrutalism-button flex items-center gap-1"><BarChart3 className="h-4 w-4 mr-2" />Akun</Button>
+                <Button variant={chartType === "trends" ? "default" : "outline"} onClick={() => setChartType("trends")} className="neobrutalism-button flex items-center gap-1"><CalendarIcon className="h-4 w-4 mr-2" />Tren</Button>
+                <Button variant={chartType === "forecast" ? "default" : "outline"} onClick={() => setChartType("forecast")} className="neobrutalism-button flex items-center gap-1"><TrendingUp className="h-4 w-4 mr-2" />Forecasting</Button>
               </div>
             </div>
+
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               {chartType === "overview" && (
                 <>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Pemasukan vs Pengeluaran</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={monthlyData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} />
-                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Legend />
-                          <Bar dataKey="income" fill="#22c55e" name="Pemasukan" />
-                          <Bar dataKey="expense" fill="#ef4444" name="Pengeluaran" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Pertumbuhan Tabungan</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <AreaChart data={monthlyData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} />
-                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Area
-                            type="monotone"
-                            dataKey="savings"
-                            stroke="#3b82f6"
-                            fill="#3b82f6"
-                            fillOpacity={0.3}
-                            name="Tabungan"
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Pemasukan vs Pengeluaran</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><BarChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Legend /><Bar dataKey="income" fill="#22c55e" name="Pemasukan" /><Bar dataKey="expense" fill="#ef4444" name="Pengeluaran" /></BarChart></ResponsiveContainer></CardContent></Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Pertumbuhan Tabungan</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><AreaChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Area type="monotone" dataKey="savings" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.3} name="Tabungan" /></AreaChart></ResponsiveContainer></CardContent></Card>
                 </>
               )}
               {chartType === "categories" && (
                 <>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Pengeluaran per Kategori</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <PieChart>
-                          <Pie
-                            data={categoryData}
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={100}
-                            fill="#8884d8"
-                            dataKey="value"
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          >
-                            {categoryData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Detail Kategori</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {categoryData.map((category, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: category.color }} />
-                              <span className="font-medium text-sm">{category.name}</span>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-sm">{formatCompactCurrency(category.value)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {((category.value / categoryData.reduce((sum, cat) => sum + cat.value, 0)) * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Pengeluaran per Kategori</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><PieChart><Pie data={categoryData} cx="50%" cy="50%" outerRadius={100} fill="#8884d8" dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>{categoryData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.color} />))}</Pie><Tooltip formatter={(value) => formatCurrency(Number(value))} /></PieChart></ResponsiveContainer></CardContent></Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Detail Kategori</CardTitle></CardHeader><CardContent><div className="space-y-4">{categoryData.map((category, index) => (<div key={index} className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-4 h-4 rounded-full" style={{ backgroundColor: category.color }} /><span className="font-medium text-sm">{category.name}</span></div><div className="text-right"><div className="font-bold text-sm">{formatCompactCurrency(category.value)}</div><div className="text-xs text-muted-foreground">{((category.value / categoryData.reduce((sum, cat) => sum + cat.value, 0)) * 100).toFixed(1)}%</div></div></div>))}</div></CardContent></Card>
                 </>
               )}
               {chartType === "accounts" && (
                 <>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Distribusi Saldo Akun</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <ResponsiveContainer width="100%" height={300}>
-                        <BarChart data={accountData} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis type="number" tickFormatter={(value) => formatCompactCurrency(Number(value))} />
-                          <YAxis dataKey="name" type="category" width={80} />
-                          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
-                          <Bar dataKey="balance" fill="#3b82f6" name="Saldo" />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </CardContent>
-                  </Card>
-                  <Card className="neobrutalism-card">
-                    <CardHeader>
-                      <CardTitle className="text-xl font-bold font-manrope">Komposisi Akun</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {accountData.map((account, index) => (
-                          <div key={index} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-4 h-4 rounded-full bg-${account.color}-500`} />
-                              <div>
-                                <div className="font-medium text-sm">{account.name}</div>
-                                <div className="text-xs text-muted-foreground capitalize">{account.type}</div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-bold text-sm">{formatCompactCurrency(account.balance)}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {((account.balance / accountData.reduce((sum, acc) => sum + acc.balance, 0)) * 100).toFixed(1)}%
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Distribusi Saldo Akun</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><BarChart data={accountData} layout="vertical"><CartesianGrid strokeDasharray="3 3" /><XAxis type="number" tickFormatter={(value) => formatCompactCurrency(Number(value))} /><YAxis dataKey="name" type="category" width={80} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Bar dataKey="balance" fill="#3b82f6" name="Saldo" /></BarChart></ResponsiveContainer></CardContent></Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Komposisi Akun</CardTitle></CardHeader><CardContent><div className="space-y-4">{accountData.map((account, index) => (<div key={index} className="flex items-center justify-between"><div className="flex items-center gap-3"><div className={`w-4 h-4 rounded-full bg-${account.color}-500`} /><div><div className="font-medium text-sm">{account.name}</div><div className="text-xs text-muted-foreground capitalize">{account.type}</div></div></div><div className="text-right"><div className="font-bold text-sm">{formatCompactCurrency(account.balance)}</div><div className="text-xs text-muted-foreground">{((account.balance / accountData.reduce((sum, acc) => sum + acc.balance, 0)) * 100).toFixed(1)}%</div></div></div>))}</div></CardContent></Card>
                 </>
+              )}
+              {/* DIUBAH: Grafik Tren dan Forecasting dikembalikan */}
+              {chartType === "trends" && (
+                <>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Tren Pengeluaran Bulanan</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><LineChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={3} name="Pengeluaran" /></LineChart></ResponsiveContainer></CardContent></Card>
+                  <Card className="neobrutalism-card"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Tren Pemasukan Bulanan</CardTitle></CardHeader><CardContent><ResponsiveContainer width="100%" height={300}><LineChart data={monthlyData}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="month" /><YAxis tickFormatter={(value) => formatCompactCurrency(Number(value))} /><Tooltip formatter={(value) => formatCurrency(Number(value))} /><Line type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={3} name="Pemasukan" /></LineChart></ResponsiveContainer></CardContent></Card>
+                </>
+              )}
+              {chartType === "forecast" && (
+                 <Card className="neobrutalism-card col-span-1 lg:col-span-2"><CardHeader><CardTitle className="text-xl font-bold font-manrope">Forecasting (Segera Hadir)</CardTitle></CardHeader><CardContent><div className="text-center py-20 text-muted-foreground">Fitur forecasting dan prediksi sedang dalam pengembangan.</div></CardContent></Card>
               )}
             </div>
           </>
