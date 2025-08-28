@@ -17,18 +17,16 @@ import {
 import { format } from "date-fns"
 import { id } from "date-fns/locale"
 import { TransactionActions } from "@/components/transaction-actions"
-import type { Transaction, Account, Category } from "@/types"
+import type { Account, Category, Transaction } from "@/types"
 import { supabase } from "@/lib/supabase"
 
 export default function TransactionsPage() {
-  // State untuk data dari Supabase
   const [accounts, setAccounts] = useState<Account[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // State untuk filter dan paginasi
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedAccount, setSelectedAccount] = useState<string>("all")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
@@ -39,7 +37,6 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // Fetch data dari Supabase saat komponen dimuat
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true)
@@ -61,9 +58,17 @@ export default function TransactionsPage() {
           .select("*");
         if (categoryError) throw categoryError;
         
-        // Transformasi data
-        setAccounts(platformData || []);
+        setAccounts(platformData.map(p => ({
+          id: p.id,
+          name: p.account,
+          type: p.type_account,
+          balance: p.saldo,
+          isSavings: p.saving,
+          color: `bg-${p.color}-500`,
+        })) || []);
+        
         setCategories(categoryData || []);
+
         setTransactions(transactionData.map(tx => ({
           id: tx.id,
           date: tx.date,
@@ -72,7 +77,6 @@ export default function TransactionsPage() {
           subcategory: tx['sub-category'],
           amount: tx.nominal,
           type: tx.category === 'Pemasukan' ? 'income' : tx.category === 'Mutasi' ? 'transfer' : 'expense',
-          // accountId sekarang berisi NAMA akun, bukan ID
           accountId: tx.account, 
           toAccountId: tx.destination_account,
           receiptUrl: tx.receipt_url,
@@ -95,7 +99,6 @@ export default function TransactionsPage() {
     }).format(amount)
   }
 
-  // Fungsi handler sekarang berinteraksi dengan Supabase
   const handleTransactionUpdate = async (updatedTransaction: Transaction) => {
     setTransactions(transactions.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t)))
   }
@@ -130,8 +133,15 @@ export default function TransactionsPage() {
   const filteredAndSortedTransactions = useMemo(() => {
     const filtered = transactions.filter((transaction) => {
       if (searchTerm && !transaction.description.toLowerCase().includes(searchTerm.toLowerCase())) return false
-      // DIUBAH: Filter akun sekarang berdasarkan nama
-      if (selectedAccount !== "all" && transaction.accountId !== accounts.find(a => a.id === selectedAccount)?.name) return false
+      
+      // DIUBAH: Logika filter akun diperbaiki
+      if (selectedAccount !== "all") {
+        const selectedAccountName = accounts.find(a => a.id === selectedAccount)?.name;
+        if (transaction.accountId !== selectedAccountName && transaction.toAccountId !== selectedAccountName) {
+            return false;
+        }
+      }
+
       if (selectedCategory !== "all" && transaction.category !== selectedCategory) return false
       if (selectedType !== "all" && transaction.type !== selectedType) return false
       if (dateRange.from || dateRange.to) {
@@ -145,9 +155,9 @@ export default function TransactionsPage() {
     filtered.sort((a, b) => {
       let comparison = 0
       switch (sortBy) {
-        case "date": comparison = new Date(a.date).getTime() - new Date(b.date).getTime(); break
-        case "amount": comparison = Math.abs(a.amount) - Math.abs(b.amount); break
-        case "description": comparison = a.description.localeCompare(b.description); break
+        case "date": comparison = new Date(b.date).getTime() - new Date(a.date).getTime(); break // Desc by default
+        case "amount": comparison = Math.abs(b.amount) - Math.abs(a.amount); break // Desc by default
+        case "description": comparison = a.description.localeCompare(b.description); break // Asc by default
       }
       return sortOrder === "asc" ? comparison : -comparison
     })
@@ -171,9 +181,7 @@ export default function TransactionsPage() {
     setCurrentPage(1)
   }
 
-  const exportToCSV = () => {
-    // Fungsi export Anda tidak berubah
-  }
+  const exportToCSV = () => { /* ... */ }
 
   const getTransactionIcon = (type: string) => {
     switch (type) {
@@ -368,9 +376,9 @@ export default function TransactionsPage() {
                   <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Tidak ada transaksi yang ditemukan</TableCell></TableRow>
                 ) : (
                   paginatedTransactions.map((transaction) => {
-                    // DIUBAH: Logika pencarian akun sekarang berdasarkan NAMA
-                    const account = accounts.find((acc) => acc.name === transaction.accountId)
-                    const toAccount = transaction.toAccountId ? accounts.find((acc) => acc.name === transaction.toAccountId) : null
+                    // DIUBAH: Logika pencocokan dibuat lebih aman dengan trim()
+                    const account = accounts.find((acc) => acc.name.trim() === transaction.accountId?.trim())
+                    const toAccount = transaction.toAccountId ? accounts.find((acc) => acc.name.trim() === transaction.toAccountId?.trim()) : null
                     return (
                       <TableRow key={transaction.id} className={`neobrutalism-table-row border-b border-border transition-all duration-75 ${transaction.struck ? "opacity-60" : ""}`}>
                         <TableCell className="font-medium">{format(new Date(transaction.date), "dd MMM yyyy", { locale: id })}</TableCell>
