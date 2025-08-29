@@ -73,7 +73,6 @@ export default function DashboardPage() {
           }
       });
       
-      // DIUBAH: Menambahkan kategori "Mutasi" secara manual
       categoryMap.set('Mutasi', { type: 'transfer', subcategories: ['Alokasi saldo ke', 'Tarik Tunai dari'] });
 
       const structuredCategories = Array.from(categoryMap.entries()).map(([name, data]) => ({
@@ -131,7 +130,6 @@ export default function DashboardPage() {
         return;
     }
 
-    // DIUBAH: Menggunakan String() untuk pencocokan yang aman dan anti-error
     const fromAccount = accounts.find(acc => String(acc.id) === String(formData.accountId));
     if (!fromAccount) {
         alert("Akun asal tidak valid.");
@@ -139,7 +137,6 @@ export default function DashboardPage() {
     }
 
     let toAccountName = null;
-    // DIUBAH: Logika untuk menentukan akun tujuan
     if (formData.category === 'Mutasi') {
         if (formData.subcategory === 'Tarik Tunai dari') {
             const cashAccount = accounts.find(acc => acc.type === 'Cash');
@@ -205,8 +202,66 @@ export default function DashboardPage() {
     setFormData({ description: "", amount: "", type: "expense", category: "", subcategory: "", accountId: "", toAccountId: "", date: new Date().toISOString().split("T")[0], receiptFile: null });
   }
 
-  const handleTransactionUpdate = async () => { await fetchData(); }
-  const handleTransactionDelete = async () => { await fetchData(); }
+  // DIUBAH: Fungsi ini sekarang akan meng-update data di Supabase
+  const handleTransactionUpdate = async (updatedTransaction: Transaction) => {
+    // Note: Logika kalkulasi ulang saldo saat update bisa menjadi sangat kompleks.
+    // Cara paling aman adalah dengan me-refresh semua data setelah update berhasil.
+    // Untuk saat ini, kita akan update transaksinya saja.
+    const transactionDataToUpdate = {
+        date: updatedTransaction.date,
+        description: updatedTransaction.description,
+        category: updatedTransaction.category,
+        'sub-category': updatedTransaction.subcategory,
+        nominal: updatedTransaction.amount,
+        account: updatedTransaction.accountId,
+        destination_account: updatedTransaction.toAccountId,
+    };
+
+    const { error } = await supabase.from('transactions').update(transactionDataToUpdate).eq('id', updatedTransaction.id);
+    
+    if (error) {
+        console.error("Error updating transaction:", error);
+        alert("Gagal memperbarui transaksi.");
+    } else {
+        // Jika berhasil, ambil ulang semua data untuk memastikan konsistensi
+        await fetchData();
+    }
+  }
+
+  // DIUBAH: Fungsi ini sekarang akan menghapus data di Supabase
+  const handleTransactionDelete = async (transactionId: string) => {
+    // 1. Cari transaksi yang akan dihapus untuk mendapatkan detailnya
+    const transactionToDelete = transactions.find(t => t.id === transactionId);
+    if (!transactionToDelete) return;
+
+    // 2. Hapus transaksi dari Supabase
+    const { error: deleteError } = await supabase.from('transactions').delete().eq('id', transactionId);
+
+    if (deleteError) {
+        console.error("Failed to delete transaction:", deleteError);
+        alert("Gagal menghapus transaksi.");
+        return;
+    }
+
+    // 3. Kembalikan saldo akun yang terpengaruh
+    const fromAccount = accounts.find(acc => acc.name === transactionToDelete.accountId);
+    if (fromAccount) {
+        // Mengurangi nominal (jika pengeluaran, -(-amount) = +amount)
+        const newBalance = fromAccount.balance - transactionToDelete.amount;
+        await supabase.from('platforms').update({ saldo: newBalance }).eq('id', fromAccount.id);
+    }
+
+    if (transactionToDelete.type === 'transfer' && transactionToDelete.toAccountId) {
+        const toAccount = accounts.find(acc => acc.name === transactionToDelete.toAccountId);
+        if (toAccount) {
+            const newBalance = toAccount.balance - Math.abs(transactionToDelete.amount);
+            await supabase.from('platforms').update({ saldo: newBalance }).eq('id', toAccount.id);
+        }
+    }
+
+    // 4. Ambil data terbaru untuk me-refresh UI
+    await fetchData();
+  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount)
@@ -278,7 +333,6 @@ export default function DashboardPage() {
                     <AccountSelector accounts={accounts} value={formData.accountId} onValueChange={(value) => setFormData({ ...formData, accountId: value })} placeholder="Pilih akun" />
                   </div>
                   
-                  {/* DIUBAH: Logika tampilan Akun Tujuan */}
                   {formData.category === "Mutasi" && formData.subcategory !== 'Tarik Tunai dari' && (
                     <div>
                       <Label htmlFor="toAccount" className="text-sm font-semibold">Akun Tujuan</Label>
