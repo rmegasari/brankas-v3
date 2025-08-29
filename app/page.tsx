@@ -131,6 +131,7 @@ export default function DashboardPage() {
         return;
     }
 
+    // DIUBAH: Menggunakan String() untuk pencocokan yang aman dan anti-error
     const fromAccount = accounts.find(acc => String(acc.id) === String(formData.accountId));
     if (!fromAccount) {
         alert("Akun asal tidak valid.");
