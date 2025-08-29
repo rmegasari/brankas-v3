@@ -1,4 +1,4 @@
-  "use client"
+"use client"
 
 import type React from "react"
 import { useState, useEffect, useMemo } from "react"
@@ -131,11 +131,25 @@ export default function DashboardPage() {
         return;
     }
 
-    // DIUBAH: Menggunakan String() untuk pencocokan yang aman dan anti-error
     const fromAccount = accounts.find(acc => String(acc.id) === String(formData.accountId));
     if (!fromAccount) {
         alert("Akun asal tidak valid.");
         return;
+    }
+
+    let toAccountName = null;
+    // DIUBAH: Logika untuk menentukan akun tujuan
+    if (formData.category === 'Mutasi') {
+        if (formData.subcategory === 'Tarik Tunai dari') {
+            const cashAccount = accounts.find(acc => acc.name.toLowerCase() === 'cash');
+            if (!cashAccount) {
+                alert("Akun 'CASH' tidak ditemukan. Mohon buat akun CASH terlebih dahulu.");
+                return;
+            }
+            toAccountName = cashAccount.name;
+        } else {
+            toAccountName = accounts.find(acc => String(acc.id) === String(formData.toAccountId))?.name || null;
+        }
     }
 
     let receiptUrl: string | null = null;
@@ -161,7 +175,7 @@ export default function DashboardPage() {
         'sub-category': formData.subcategory,
         nominal: formData.type === 'expense' ? -amount : amount,
         account: fromAccount.name,
-        destination_account: formData.category === 'Mutasi' ? accounts.find(acc => String(acc.id) === String(formData.toAccountId))?.name : null,
+        destination_account: toAccountName,
         receipt_url: receiptUrl,
     };
 
@@ -178,7 +192,7 @@ export default function DashboardPage() {
     await supabase.from('platforms').update({ saldo: newFromBalance }).eq('id', fromAccount.id);
 
     if (formData.category === 'Mutasi') {
-        const toAccount = accounts.find(acc => String(acc.id) === String(formData.toAccountId));
+        const toAccount = accounts.find(acc => acc.name === toAccountName);
         if (toAccount) {
             const newToBalance = toAccount.balance + amount;
             await supabase.from('platforms').update({ saldo: newToBalance }).eq('id', toAccount.id);
@@ -262,12 +276,15 @@ export default function DashboardPage() {
                     <Label htmlFor="account" className="text-sm font-semibold">{formData.category === "Mutasi" ? "Akun Asal" : "Akun"}</Label>
                     <AccountSelector accounts={accounts} value={formData.accountId} onValueChange={(value) => setFormData({ ...formData, accountId: value })} placeholder="Pilih akun" />
                   </div>
-                  {formData.category === "Mutasi" && (
+                  
+                  {/* DIUBAH: Logika tampilan Akun Tujuan */}
+                  {formData.category === "Mutasi" && formData.subcategory !== 'Tarik Tunai dari' && (
                     <div>
                       <Label htmlFor="toAccount" className="text-sm font-semibold">Akun Tujuan</Label>
                       <AccountSelector accounts={accounts} value={formData.toAccountId} onValueChange={(value) => setFormData({ ...formData, toAccountId: value })} placeholder="Pilih akun tujuan" excludeAccountId={formData.accountId} />
                     </div>
                   )}
+
                   {formData.category === "Mutasi" && fromAccountForPreview && toAccountForPreview && transferAmount > 0 && (
                     <TransferPreview fromAccount={fromAccountForPreview} toAccount={toAccountForPreview} amount={transferAmount} subcategory={formData.subcategory} />
                   )}
@@ -277,7 +294,7 @@ export default function DashboardPage() {
                       {formData.receiptFile && (<div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground"><ImageIcon className="h-4 w-4" /><span>{formData.receiptFile.name}</span></div>)}
                     </div>
                   </div>
-                  <Button type="submit" className="neobrutalism-button w-full bg-[#00A86B] text-white" disabled={!formData.category || !formData.accountId || (formData.category === "Mutasi" && !formData.toAccountId)}>
+                  <Button type="submit" className="neobrutalism-button w-full bg-[#00A86B] text-white" disabled={!formData.category || !formData.accountId || (formData.category === "Mutasi" && formData.subcategory !== 'Tarik Tunai dari' && !formData.toAccountId)}>
                     Simpan Transaksi
                   </Button>
                 </form>
