@@ -141,9 +141,9 @@ export default function DashboardPage() {
     // DIUBAH: Logika untuk menentukan akun tujuan
     if (formData.category === 'Mutasi') {
         if (formData.subcategory === 'Tarik Tunai dari') {
-            const cashAccount = accounts.find(acc => acc.name.toLowerCase() === 'cash');
+            const cashAccount = accounts.find(acc => acc.type === 'Cash');
             if (!cashAccount) {
-                alert("Akun 'CASH' tidak ditemukan. Mohon buat akun CASH terlebih dahulu.");
+                alert("Akun dengan tipe 'Cash' tidak ditemukan. Mohon buat akun CASH terlebih dahulu.");
                 return;
             }
             toAccountName = cashAccount.name;
