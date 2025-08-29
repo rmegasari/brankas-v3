@@ -50,6 +50,7 @@ export default function DashboardPage() {
 
   // Fungsi untuk mengambil semua data awal
   const fetchData = async () => {
+    // Tidak perlu setLoading(true) di sini agar refresh terasa lebih cepat
     try {
       const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
       if (platformError) throw platformError;
@@ -57,12 +58,31 @@ export default function DashboardPage() {
       const { data: transactionData, error: transactionError } = await supabase.from("transactions").select("*").order("date", { ascending: false });
       if (transactionError) throw transactionError;
 
+      // DIUBAH: Mengambil dan memproses data kategori dengan benar
       const { data: categoryData, error: categoryError } = await supabase.from("categories").select("*");
       if (categoryError) throw categoryError;
 
-      // DIUBAH: Menambahkan fallback `|| []` untuk mencegah error jika data null
+      const categoryMap = new Map<string, { type: string, subcategories: string[] }>();
+      (categoryData || []).forEach(item => {
+          if (!categoryMap.has(item.category)) {
+              categoryMap.set(item.category, { 
+                  type: item.category === 'Pemasukan' ? 'income' : item.category === 'Mutasi' ? 'transfer' : 'expense',
+                  subcategories: [] 
+              });
+          }
+          if (item['sub-category']) {
+              categoryMap.get(item.category)!.subcategories.push(item['sub-category']);
+          }
+      });
+      
+      const structuredCategories = Array.from(categoryMap.entries()).map(([name, data]) => ({
+          id: name, // Menggunakan nama sebagai ID unik
+          name,
+          ...data
+      }));
+
       setAccounts((platformData || []).map(p => ({ id: p.id, name: p.account, type: p.type_account, balance: p.saldo, isSavings: p.saving, color: `bg-${p.color}-500` })));
-      setCategories(categoryData || []);
+      setCategories(structuredCategories);
       setTransactions((transactionData || []).map(tx => ({ id: tx.id, date: tx.date, description: tx.description, category: tx.category, subcategory: tx['sub-category'], amount: tx.nominal, type: tx.category === 'Pemasukan' ? 'income' : tx.category === 'Mutasi' ? 'transfer' : 'expense', accountId: tx.account, toAccountId: tx.destination_account, receiptUrl: tx.receipt_url, struck: tx.struck || false })));
 
     } catch (err) {
@@ -177,8 +197,6 @@ export default function DashboardPage() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount)
   }
-
-  const selectedCategoryData = categories.find((cat) => cat.name === formData.category)
 
   const handleCategoryChange = (category: string) => {
     const categoryData = categories.find((cat) => cat.name === category)
