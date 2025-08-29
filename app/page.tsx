@@ -50,8 +50,7 @@ export default function DashboardPage() {
 
   // Fungsi untuk mengambil semua data awal
   const fetchData = async () => {
-    setLoading(true)
-    setError(null)
+    // Tidak perlu setLoading(true) di sini agar refresh terasa lebih cepat
     try {
       const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
       if (platformError) throw platformError;
@@ -64,7 +63,7 @@ export default function DashboardPage() {
 
       setAccounts(platformData.map(p => ({ id: p.id, name: p.account, type: p.type_account, balance: p.saldo, isSavings: p.saving, color: `bg-${p.color}-500` })) || []);
       setCategories(categoryData || []);
-      setTransactions(transactionData.map(tx => ({ id: tx.id, date: tx.date, description: tx.description, category: tx.category, subcategory: tx['sub-category'], amount: tx.nominal, type: tx.category === 'Pemasukan' ? 'income' : tx.category === 'Mutasi' ? 'transfer' : 'expense', accountId: tx.account, toAccountId: tx.destination_account, receiptUrl: tx.receipt_url })) || []);
+      setTransactions(transactionData.map(tx => ({ id: tx.id, date: tx.date, description: tx.description, category: tx.category, subcategory: tx['sub-category'], amount: tx.nominal, type: tx.category === 'Pemasukan' ? 'income' : tx.category === 'Mutasi' ? 'transfer' : 'expense', accountId: tx.account, toAccountId: tx.destination_account, receiptUrl: tx.receipt_url, struck: tx.struck || false })) || []);
 
     } catch (err) {
       console.error("Error fetching dashboard data:", err);
@@ -114,8 +113,13 @@ export default function DashboardPage() {
         return;
     }
 
+    const fromAccount = accounts.find(acc => acc.id === formData.accountId);
+    if (!fromAccount) {
+        alert("Akun asal tidak valid.");
+        return;
+    }
+
     let receiptUrl: string | null = null;
-    // 1. Upload bukti transaksi jika ada
     if (formData.receiptFile) {
         const file = formData.receiptFile;
         const filePath = `public/${Date.now()}-${file.name}`;
@@ -131,19 +135,17 @@ export default function DashboardPage() {
         receiptUrl = urlData.publicUrl;
     }
 
-    // 2. Siapkan data untuk dikirim ke Supabase
     const transactionData = {
         date: formData.date,
         description: formData.description,
         category: formData.category,
         'sub-category': formData.subcategory,
         nominal: formData.type === 'expense' ? -amount : amount,
-        account: formData.accountId,
-        destination_account: formData.toAccountId || null,
+        account: fromAccount.name,
+        destination_account: formData.category === 'Mutasi' ? accounts.find(acc => acc.id === formData.toAccountId)?.name : null,
         receipt_url: receiptUrl,
     };
 
-    // 3. Kirim data ke tabel transactions
     const { error: insertError } = await supabase.from('transactions').insert([transactionData]);
 
     if (insertError) {
@@ -152,40 +154,31 @@ export default function DashboardPage() {
         return;
     }
 
-    // 4. Update saldo akun terkait
-    const fromAccount = accounts.find(acc => acc.name === formData.accountId);
-    if (fromAccount) {
-        const newBalance = fromAccount.balance + transactionData.nominal;
-        await supabase.from('platforms').update({ saldo: newBalance }).eq('id', fromAccount.id);
-    }
+    // Update saldo akun
+    const newFromBalance = fromAccount.balance + transactionData.nominal;
+    await supabase.from('platforms').update({ saldo: newFromBalance }).eq('id', fromAccount.id);
+
     if (formData.category === 'Mutasi') {
-        const toAccount = accounts.find(acc => acc.name === formData.toAccountId);
+        const toAccount = accounts.find(acc => acc.id === formData.toAccountId);
         if (toAccount) {
-            const newToBalance = toAccount.balance + amount; // Mutasi selalu positif untuk akun tujuan
+            const newToBalance = toAccount.balance + amount;
             await supabase.from('platforms').update({ saldo: newToBalance }).eq('id', toAccount.id);
         }
     }
 
-    // 5. Ambil data terbaru dan reset form
     await fetchData();
     setIsModalOpen(false);
     setFormData({ description: "", amount: "", type: "expense", category: "", subcategory: "", accountId: "", toAccountId: "", date: new Date().toISOString().split("T")[0], receiptFile: null });
   }
 
-  const handleTransactionUpdate = async (updatedTransaction: Transaction, accountUpdates?: Account[]) => {
-    await fetchData(); // Cara termudah untuk memastikan semua data sinkron
-  }
-
-  const handleTransactionDelete = async (transactionId: string, accountUpdates?: Account[]) => {
-    await fetchData(); // Cara termudah untuk memastikan semua data sinkron
-  }
+  const handleTransactionUpdate = async () => { await fetchData(); }
+  const handleTransactionDelete = async () => { await fetchData(); }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", minimumFractionDigits: 0 }).format(amount)
   }
 
   const selectedCategoryData = categories.find((cat) => cat.name === formData.category)
-  const subcategories = selectedCategoryData?.subcategories || []
 
   const handleCategoryChange = (category: string) => {
     const categoryData = categories.find((cat) => cat.name === category)
@@ -201,8 +194,8 @@ export default function DashboardPage() {
     setFormData({ ...formData, receiptFile: file })
   }
 
-  const fromAccount = accounts.find((acc) => acc.id === formData.accountId)
-  const toAccount = accounts.find((acc) => acc.id === formData.toAccountId)
+  const fromAccountForPreview = accounts.find((acc) => acc.id === formData.accountId)
+  const toAccountForPreview = accounts.find((acc) => acc.id === formData.toAccountId)
   const transferAmount = Number.parseFloat(formData.amount) || 0
   
   if (loading) {
@@ -258,8 +251,8 @@ export default function DashboardPage() {
                       <AccountSelector accounts={accounts} value={formData.toAccountId} onValueChange={(value) => setFormData({ ...formData, toAccountId: value })} placeholder="Pilih akun tujuan" excludeAccountId={formData.accountId} />
                     </div>
                   )}
-                  {formData.category === "Mutasi" && fromAccount && toAccount && transferAmount > 0 && (
-                    <TransferPreview fromAccount={fromAccount} toAccount={toAccount} amount={transferAmount} subcategory={formData.subcategory} />
+                  {formData.category === "Mutasi" && fromAccountForPreview && toAccountForPreview && transferAmount > 0 && (
+                    <TransferPreview fromAccount={fromAccountForPreview} toAccount={toAccountForPreview} amount={transferAmount} subcategory={formData.subcategory} />
                   )}
                   <div>
                     <Label htmlFor="receipt" className="text-sm font-semibold">Bukti Transaksi (Opsional)</Label>
