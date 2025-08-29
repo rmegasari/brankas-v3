@@ -58,7 +58,6 @@ export default function DashboardPage() {
       const { data: transactionData, error: transactionError } = await supabase.from("transactions").select("*").order("date", { ascending: false });
       if (transactionError) throw transactionError;
 
-      // DIUBAH: Mengambil dan memproses data kategori dengan benar
       const { data: categoryData, error: categoryError } = await supabase.from("categories").select("*");
       if (categoryError) throw categoryError;
 
@@ -133,7 +132,8 @@ export default function DashboardPage() {
         return;
     }
 
-    const fromAccount = accounts.find(acc => acc.id === formData.accountId);
+    // DIUBAH: Menggunakan String() untuk pencocokan yang aman
+    const fromAccount = accounts.find(acc => String(acc.id) === String(formData.accountId));
     if (!fromAccount) {
         alert("Akun asal tidak valid.");
         return;
@@ -162,7 +162,8 @@ export default function DashboardPage() {
         'sub-category': formData.subcategory,
         nominal: formData.type === 'expense' ? -amount : amount,
         account: fromAccount.name,
-        destination_account: formData.category === 'Mutasi' ? accounts.find(acc => acc.id === formData.toAccountId)?.name : null,
+        // DIUBAH: Menggunakan String() untuk pencocokan yang aman
+        destination_account: formData.category === 'Mutasi' ? accounts.find(acc => String(acc.id) === String(formData.toAccountId))?.name : null,
         receipt_url: receiptUrl,
     };
 
@@ -179,7 +180,8 @@ export default function DashboardPage() {
     await supabase.from('platforms').update({ saldo: newFromBalance }).eq('id', fromAccount.id);
 
     if (formData.category === 'Mutasi') {
-        const toAccount = accounts.find(acc => acc.id === formData.toAccountId);
+        // DIUBAH: Menggunakan String() untuk pencocokan yang aman
+        const toAccount = accounts.find(acc => String(acc.id) === String(formData.toAccountId));
         if (toAccount) {
             const newToBalance = toAccount.balance + amount;
             await supabase.from('platforms').update({ saldo: newToBalance }).eq('id', toAccount.id);
@@ -212,8 +214,9 @@ export default function DashboardPage() {
     setFormData({ ...formData, receiptFile: file })
   }
 
-  const fromAccountForPreview = accounts.find((acc) => acc.id === formData.accountId)
-  const toAccountForPreview = accounts.find((acc) => acc.id === formData.toAccountId)
+  // DIUBAH: Menggunakan String() untuk pencocokan yang aman
+  const fromAccountForPreview = accounts.find((acc) => String(acc.id) === String(formData.accountId))
+  const toAccountForPreview = accounts.find((acc) => String(acc.id) === String(formData.toAccountId))
   const transferAmount = Number.parseFloat(formData.amount) || 0
   
   if (loading) {
