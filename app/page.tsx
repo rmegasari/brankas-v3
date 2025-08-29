@@ -1,4 +1,4 @@
-"use client"
+  "use client"
 
 import type React from "react"
 import { useState, useEffect, useMemo } from "react"
@@ -50,7 +50,6 @@ export default function DashboardPage() {
 
   // Fungsi untuk mengambil semua data awal
   const fetchData = async () => {
-    // Tidak perlu setLoading(true) di sini agar refresh terasa lebih cepat
     try {
       const { data: platformData, error: platformError } = await supabase.from("platforms").select("*");
       if (platformError) throw platformError;
@@ -65,7 +64,7 @@ export default function DashboardPage() {
       (categoryData || []).forEach(item => {
           if (!categoryMap.has(item.category)) {
               categoryMap.set(item.category, { 
-                  type: item.category === 'Pemasukan' ? 'income' : item.category === 'Mutasi' ? 'transfer' : 'expense',
+                  type: item.category === 'Pemasukan' ? 'income' : 'expense',
                   subcategories: [] 
               });
           }
@@ -74,8 +73,11 @@ export default function DashboardPage() {
           }
       });
       
+      // DIUBAH: Menambahkan kategori "Mutasi" secara manual
+      categoryMap.set('Mutasi', { type: 'transfer', subcategories: ['Alokasi saldo ke', 'Tarik Tunai dari'] });
+
       const structuredCategories = Array.from(categoryMap.entries()).map(([name, data]) => ({
-          id: name, // Menggunakan nama sebagai ID unik
+          id: name,
           name,
           ...data
       }));
@@ -92,12 +94,10 @@ export default function DashboardPage() {
     }
   };
 
-  // Jalankan fetch data saat komponen pertama kali dimuat
   useEffect(() => {
     fetchData();
   }, []);
 
-  // Kalkulasi data ringkasan menggunakan useMemo
   const { totalBalance, savingsBalance, dailyBalance, periodData } = useMemo(() => {
     const total = accounts.reduce((sum, account) => sum + account.balance, 0);
     const savings = accounts.filter((account) => account.isSavings).reduce((sum, account) => sum + account.balance, 0);
@@ -123,7 +123,6 @@ export default function DashboardPage() {
     };
   }, [accounts, transactions, dashboardPeriod]);
 
-  // Handler untuk submit form transaksi baru
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const amount = Number.parseFloat(formData.amount);
@@ -132,7 +131,7 @@ export default function DashboardPage() {
         return;
     }
 
-    // DIUBAH: Menggunakan String() untuk pencocokan yang aman
+    // DIUBAH: Menggunakan String() untuk pencocokan yang aman dan anti-error
     const fromAccount = accounts.find(acc => String(acc.id) === String(formData.accountId));
     if (!fromAccount) {
         alert("Akun asal tidak valid.");
@@ -162,7 +161,6 @@ export default function DashboardPage() {
         'sub-category': formData.subcategory,
         nominal: formData.type === 'expense' ? -amount : amount,
         account: fromAccount.name,
-        // DIUBAH: Menggunakan String() untuk pencocokan yang aman
         destination_account: formData.category === 'Mutasi' ? accounts.find(acc => String(acc.id) === String(formData.toAccountId))?.name : null,
         receipt_url: receiptUrl,
     };
@@ -180,7 +178,6 @@ export default function DashboardPage() {
     await supabase.from('platforms').update({ saldo: newFromBalance }).eq('id', fromAccount.id);
 
     if (formData.category === 'Mutasi') {
-        // DIUBAH: Menggunakan String() untuk pencocokan yang aman
         const toAccount = accounts.find(acc => String(acc.id) === String(formData.toAccountId));
         if (toAccount) {
             const newToBalance = toAccount.balance + amount;
@@ -214,7 +211,6 @@ export default function DashboardPage() {
     setFormData({ ...formData, receiptFile: file })
   }
 
-  // DIUBAH: Menggunakan String() untuk pencocokan yang aman
   const fromAccountForPreview = accounts.find((acc) => String(acc.id) === String(formData.accountId))
   const toAccountForPreview = accounts.find((acc) => String(acc.id) === String(formData.toAccountId))
   const transferAmount = Number.parseFloat(formData.amount) || 0
